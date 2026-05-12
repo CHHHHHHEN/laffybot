@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 ERROR_TIMEOUT = "timeout"
@@ -11,16 +11,19 @@ ERROR_SERVER = "server"
 class ToolCallRequest:
     id: str
     name: str
-    arguments: dict[str, Any]
+    arguments: dict[str, Any] = field(default_factory=dict)
+    extra_content: dict[str, Any] | None = None
+    provider_specific_fields: dict[str, Any] | None = None
+
 
 @dataclass
 class LLMResponse:
     content: str | None
-    tool_calls: list[ToolCallRequest]
+    tool_calls: list[ToolCallRequest] = field(default_factory=list)
     finish_reason: str = "stop"
-    usage: dict[str, int] = {}
+    usage: dict[str, int] = field(default_factory=dict)
     reasoning_content: str | None = None
 
     error_status_code: int | None = None
-    error_kind: str | None = None          # "timeout", "connection"
+    error_kind: str | None = None
     error_should_retry: bool | None = None

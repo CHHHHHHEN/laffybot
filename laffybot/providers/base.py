@@ -17,8 +17,7 @@ class BaseProvider(ABC):
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> LLMResponse:
-        ...
+    ) -> LLMResponse: ...
 
     @abstractmethod
     async def chat_completion_stream(
@@ -29,5 +28,4 @@ class BaseProvider(ABC):
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> LLMResponse:
-        ...
+    ) -> LLMResponse: ...
