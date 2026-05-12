@@ -11,6 +11,7 @@ dependencies = [
     "openai",
     "httpx",
     "json-repair",
+    "aiosqlite",
 ]
 
 [project.optional-dependencies]
