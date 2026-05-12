@@ -205,21 +205,24 @@ data: {}
 
 **实现说明：**
 
-> **⚠️ 当前实现状态**
+> **✅ 当前实现状态**
 > 
-> 当前版本的 `AgentRunner` 仅支持同步执行，暂不支持流式事件输出。后续开发计划：
+> 当前版本已完整实现流式事件输出：
 > 
-> 1. **Phase 1 - 基础流式支持**：
+> 1. **Phase 1 - 基础流式支持** ✅：
+>    - `AgentRunner.run_stream()` 方法已实现
 >    - 集成 `chat_completion_stream` 实现内容流式输出
->    - 支持 `content`、`reasoning` 事件
+>    - 支持 `session_start`、`content`、`reasoning`、`done` 事件
 > 
-> 2. **Phase 2 - 工具调用流式**：
+> 2. **Phase 2 - 工具调用流式** ✅：
 >    - 实现 `tool_call`、`tool_result` 事件
+>    - 支持工具执行计时（`duration_ms`）
 >    - 支持工具执行进度反馈
 > 
-> 3. **Phase 3 - 完整事件流**：
->    - 完善所有事件类型
->    - 支持心跳和重连机制
+> 3. **Phase 3 - 完整事件流** ✅：
+>    - 完善所有事件类型（`error`、`cancelled`、`ping`）
+>    - 支持心跳机制（`HeartbeatManager`）
+>    - 支持取消机制（`CancellationToken`）
 
 **stop_reason 取值:**
 - `completed`: 正常完成
@@ -247,15 +250,13 @@ data: {"type": "ping", "timestamp": "2024-01-15T10:30:15Z"}
 
 ### 5. 取消请求
 
-> **⚠️ 实现状态：待开发**
+> **✅ 实现状态：已完成**
 > 
-> 取消机制涉及以下技术挑战：
-> - 需要实现 `CancellationToken` 传递机制
-> - 正在执行的工具调用需要支持中断
-> - 需要资源清理逻辑（临时文件、网络连接等）
-> - 需要与 LLM 提供商的流式 API 取消机制集成
->
-> 当前版本不支持取消功能，后续版本将实现。
+> 取消机制已实现以下功能：
+> - `CancellationToken` 传递机制已实现
+> - 工具调用前的取消检查点已实现
+> - 取消后的资源清理逻辑已实现
+> - 取消事件（`cancelled`）已实现
 
 ```
 POST /api/v1/sessions/{session_id}/cancel

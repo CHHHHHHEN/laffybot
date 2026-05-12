@@ -1,5 +1,16 @@
 # AgentRunner 流式支持实现计划
 
+> **✅ 实现状态：已完成**
+> 
+> 本文档描述的设计已全部实现。实现代码位于：
+> - `laffybot/agent/runner.py` - `AgentRunner.run_stream()` 方法
+> - `laffybot/agent/events.py` - SSE 事件类型定义
+> - `laffybot/agent/cancellation.py` - 取消机制
+> - `laffybot/agent/heartbeat.py` - 心跳机制
+> - `laffybot/providers/types.py` - `StreamChunk` 和 `ToolCallDelta` 类型
+> - `laffybot/providers/base.py` - 流式回调接口
+> - `laffybot/providers/openai.py` - OpenAI Provider 流式实现
+
 ## 概述
 
 本文档定义将 `AgentRunner` 修改为支持流式事件输出的规范和实现途径，以符合 `api.md` 中定义的 SSE 流式响应规范。
@@ -99,32 +110,37 @@ session_start
 
 ---
 
-## 当前架构分析
+## 架构分析（实现后状态）
 
-### 现有组件
+### 已完成组件
 
-| 组件 | 位置 | 当前状态 |
+| 组件 | 位置 | 实现状态 |
 |------|------|---------|
-| `AgentRunner` | `laffybot/agent/runner.py` | 仅支持同步执行，返回 `AgentRunResult` |
-| `BaseProvider` | `laffybot/providers/base.py` | 已定义 `chat_completion_stream()` 抽象方法 |
-| `OpenAIProvider` | `laffybot/providers/openai.py` | 已实现流式支持，支持 `reasoning_content` |
+| `AgentRunner` | `laffybot/agent/runner.py` | ✅ 支持流式执行，`run_stream()` 方法 |
+| `BaseProvider` | `laffybot/providers/base.py` | ✅ 已定义 `chat_completion_stream()` 抽象方法 |
+| `OpenAIProvider` | `laffybot/providers/openai.py` | ✅ 已实现流式支持，支持 `reasoning_content` |
+| `SSEEvent` | `laffybot/agent/events.py` | ✅ 完整事件类型定义 |
+| `CancellationToken` | `laffybot/agent/cancellation.py` | ✅ 取消机制 |
+| `HeartbeatManager` | `laffybot/agent/heartbeat.py` | ✅ 心跳机制 |
+| `StreamChunk` | `laffybot/providers/types.py` | ✅ 流式增量数据结构 |
+| `ToolCallDelta` | `laffybot/providers/types.py` | ✅ 工具调用增量结构 |
 
-### 现有流式能力
+### 已实现流式能力
 
 `OpenAIProvider.chat_completion_stream()` 已实现：
 - ✅ 流式 chunk 收集和解析（`_parse_chunks()` 方法）
 - ✅ `reasoning_content` 提取（支持 DeepSeek 等模型）
 - ✅ 空闲超时保护（默认 90 秒，可通过 `LAFFYBOT_STREAM_IDLE_TIMEOUT_S` 配置）
 - ✅ 工具调用流式解析
-- ❌ 缺少实时回调机制（当前仅收集后返回）
+- ✅ 实时回调机制（通过 `on_chunk` 回调）
 
-### 关键差距
+### 已解决的关键差距
 
-1. **执行模式**：`AgentRunner.run()` 是同步方法，需改为异步生成器
-2. **事件输出**：当前无事件输出机制，仅返回最终结果
-3. **流式集成**：`chat_completion_stream()` 已实现但未在 `AgentRunner` 中使用
-4. **工具追踪**：缺少工具执行计时和状态追踪
-5. **取消机制**：缺少请求取消和资源清理机制
+1. **执行模式**：`AgentRunner.run_stream()` 是异步生成器 ✅
+2. **事件输出**：完整的事件输出机制 ✅
+3. **流式集成**：`chat_completion_stream()` 已在 `AgentRunner` 中使用 ✅
+4. **工具追踪**：工具执行计时和状态追踪已实现 ✅
+5. **取消机制**：请求取消和资源清理机制已实现 ✅
 
 ---
 
@@ -133,52 +149,55 @@ session_start
 ### 核心接口变更
 
 **新增方法**：
-- `AgentRunner.run_stream()` - 流式执行 agent，产生 SSE 事件流
+- `AgentRunner.run_stream()` - 流式执行 agent，产生 SSE 事件流 ✅
 
 **新增数据结构**：
-- `SSEEvent`：SSE 事件数据结构
-- `ToolExecutionContext`：工具执行上下文
-- `ToolExecutionResult`：工具执行结果
-- `CancellationToken`：取消令牌
+- `SSEEvent`：SSE 事件数据结构 ✅
+- `StreamChunk`：流式增量数据 ✅
+- `ToolCallDelta`：工具调用增量 ✅
+- `CancellationToken`：取消令牌 ✅
+
+**注意**：`ToolExecutionContext` 和 `ToolExecutionResult` 未单独实现，工具执行结果直接在 `run_stream()` 方法中处理。
 
 ### 实现阶段
 
-#### Phase 1: 基础流式支持
+#### Phase 1: 基础流式支持 ✅
 
 **目标**：实现 `content` 和 `reasoning` 事件输出
 
 **变更范围**：
-- 新增 `laffybot/agent/events.py` - 事件类型定义
-- 修改 `AgentRunner` - 添加 `run_stream()` 方法
-- 集成 `provider.chat_completion_stream()`
+- 新增 `laffybot/agent/events.py` - 事件类型定义 ✅
+- 修改 `AgentRunner` - 添加 `run_stream()` 方法 ✅
+- 集成 `provider.chat_completion_stream()` ✅
 
 **规范要求**：
-- 必须在迭代开始时产生 `session_start` 事件
-- 必须将 LLM 流式输出转换为 `content` 事件
-- 必须将 `reasoning_content` 转换为 `reasoning` 事件
-- 必须在结束时产生 `done` 事件
+- 必须在迭代开始时产生 `session_start` 事件 ✅
+- 必须将 LLM 流式输出转换为 `content` 事件 ✅
+- 必须将 `reasoning_content` 转换为 `reasoning` 事件 ✅
+- 必须在结束时产生 `done` 事件 ✅
 
-#### Phase 2: 工具调用流式支持
+#### Phase 2: 工具调用流式支持 ✅
 
 **目标**：实现 `tool_call` 和 `tool_result` 事件输出
 
 **变更范围**：
-- 扩展 `run_stream()` 处理工具调用
-- 添加工具执行追踪（`ToolExecutionContext` 和 `ToolExecutionResult`）
+- 扩展 `run_stream()` 处理工具调用 ✅
+- 添加工具执行追踪（直接在 `run_stream()` 中实现）✅
 
 **规范要求**：
-- 必须在工具执行前产生 `tool_call` 事件
-- 必须在工具执行后产生 `tool_result` 事件
-- `tool_result` 必须包含 `success` 状态和 `duration_ms`
-- 多工具调用必须顺序产生事件
+- 必须在工具执行前产生 `tool_call` 事件 ✅
+- 必须在工具执行后产生 `tool_result` 事件 ✅
+- `tool_result` 必须包含 `success` 状态和 `duration_ms` ✅
+- 多工具调用必须顺序产生事件 ✅
 
-#### Phase 3: 完整事件流
+#### Phase 3: 完整事件流 ✅
 
 **目标**：实现错误处理和心跳机制
 
 **变更范围**：
-- 异常处理和 `error` 事件
-- 心跳监控和 `ping` 事件
+- 异常处理和 `error` 事件 ✅
+- 心跳监控和 `ping` 事件 ✅
+- 取消机制和 `cancelled` 事件 ✅
 
 **错误分类与处理**：
 
@@ -294,16 +313,16 @@ async def on_chunk(chunk: StreamChunk) -> None:
 
 ### 改造范围
 
-| 组件 | 改造内容 |
-|------|----------|
-| `BaseProvider` | 更新 `chat_completion_stream()` 抽象方法签名 |
-| `OpenAIProvider` | 实现新回调协议，解析增量数据并调用回调 |
-| `AgentRunner` | 实现 `on_chunk` 回调，生成 `content`/`reasoning` 事件 |
+| 组件 | 改造内容 | 状态 |
+|------|----------|------|
+| `BaseProvider` | 更新 `chat_completion_stream()` 抽象方法签名 | ✅ |
+| `OpenAIProvider` | 实现新回调协议，解析增量数据并调用回调 | ✅ |
+| `AgentRunner` | 实现 `on_chunk` 回调，生成 `content`/`reasoning` 事件 | ✅ |
 
 ### 兼容性策略
 
-- **不保留向后兼容**：直接修改接口签名
-- 所有调用方必须适配新回调协议
+- **不保留向后兼容**：直接修改接口签名 ✅
+- 所有调用方必须适配新回调协议 ✅
 
 ---
 
@@ -319,11 +338,12 @@ async def on_chunk(chunk: StreamChunk) -> None:
 
 ### 核心组件
 
-| 组件 | 职责 |
-|------|------|
-| `CancellationToken` | 取消状态管理，支持检查和触发取消 |
-| `CancellableContext` | 取消上下文，传递给工具执行 |
-| `CancellationScope` | 资源清理作用域，确保清理逻辑执行 |
+| 组件 | 职责 | 状态 |
+|------|------|------|
+| `CancellationToken` | 取消状态管理，支持检查和触发取消 | ✅ |
+| `CancelledError` | 取消异常类 | ✅ |
+
+**注意**：`CancellableContext` 和 `CancellationScope` 未单独实现，取消逻辑直接在 `run_stream()` 方法中处理。
 
 ### 取消传播路径
 
@@ -382,10 +402,11 @@ AgentRunner.run_stream() (检查取消状态)
 
 ### 核心组件
 
-| 组件 | 职责 |
-|------|------|
-| `HeartbeatManager` | 管理心跳计时器，生成 `ping` 事件 |
-| `EventEmitter` | 统一事件发送接口，重置心跳计时器 |
+| 组件 | 职责 | 状态 |
+|------|------|------|
+| `HeartbeatManager` | 管理心跳计时器，生成 `ping` 事件 | ✅ |
+
+**注意**：`EventEmitter` 未单独实现，心跳重置逻辑通过 `HeartbeatManager.reset()` 方法调用。
 
 ### 工作流程
 
@@ -420,9 +441,9 @@ AgentRunner.run_stream() (检查取消状态)
 
 ### 与流式输出的集成
 
-- `HeartbeatManager` 作为独立后台任务运行
-- `AgentRunner.run_stream()` 在产生事件时通知 `HeartbeatManager`
-- 流式结束时取消心跳任务
+- `HeartbeatManager` 作为独立后台任务运行 ✅
+- `AgentRunner.run_stream()` 在产生事件时通知 `HeartbeatManager` ✅
+- 流式结束时取消心跳任务 ✅
 
 ---
 
@@ -523,21 +544,21 @@ AgentRunner.run_stream() (检查取消状态)
 
 ## 迁移策略
 
-### 彻底迁移
+### 彻底迁移 ✅
 
 本计划采用彻底迁移策略，不保留向后兼容：
 
-1. **删除同步接口**：移除 `AgentRunner.run()` 方法
-2. **统一使用流式接口**：所有调用方必须使用 `run_stream()`
-3. **API 层调整**：所有端点必须适配流式响应
-4. **一次性迁移**：不提供过渡期，直接切换到新接口
+1. **删除同步接口**：移除 `AgentRunner.run()` 方法 ✅
+2. **统一使用流式接口**：所有调用方必须使用 `run_stream()` ✅
+3. **API 层调整**：所有端点必须适配流式响应 ✅
+4. **一次性迁移**：不提供过渡期，直接切换到新接口 ✅
 
 **迁移影响**：
-- 现有调用方需要修改为异步流式处理
-- 需要更新所有测试用例
-- API 响应格式统一为 SSE 流式
+- 现有调用方需要修改为异步流式处理 ✅
+- 需要更新所有测试用例 ✅
+- API 响应格式统一为 SSE 流式 ✅
 
 **优势**：
-- 避免维护两套接口的复杂性
-- 统一代码风格和错误处理
-- 减少技术债务
+- 避免维护两套接口的复杂性 ✅
+- 统一代码风格和错误处理 ✅
+- 减少技术债务 ✅
