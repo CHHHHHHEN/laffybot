@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Callable
 
 from laffybot.config import ProviderConfig
-from laffybot.providers.types import LLMResponse
+from laffybot.providers.types import LLMResponse, StreamChunk
 
 
 class BaseProvider(ABC):
@@ -24,7 +24,7 @@ class BaseProvider(ABC):
         self,
         messages: list[dict[str, Any]],
         model: str,
-        on_chunk: Callable[[str], Awaitable[None]],
+        on_chunk: Callable[[StreamChunk], Awaitable[None]],
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,

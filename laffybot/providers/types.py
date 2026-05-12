@@ -27,3 +27,28 @@ class LLMResponse:
     error_status_code: int | None = None
     error_kind: str | None = None
     error_should_retry: bool | None = None
+
+
+@dataclass(slots=True)
+class ToolCallDelta:
+    """Incremental tool call data from streaming response."""
+
+    index: int
+    id: str | None = None
+    name: str | None = None
+    arguments_delta: str | None = None
+
+
+@dataclass(slots=True)
+class StreamChunk:
+    """Streaming chunk data passed to on_chunk callback.
+
+    This replaces the simple str callback to support:
+    - Content streaming
+    - Reasoning/thinking streaming
+    - Tool call delta streaming
+    """
+
+    content: str | None = None
+    reasoning: str | None = None
+    tool_call_delta: ToolCallDelta | None = None

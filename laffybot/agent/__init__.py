@@ -1,3 +1,3 @@
-from laffybot.agent.runner import AgentRunResult, AgentRunSpec, AgentRunner
+from laffybot.agent.runner import AgentRunner, AgentRunSpec
 
-__all__ = ["AgentRunner", "AgentRunSpec", "AgentRunResult"]
+__all__ = ["AgentRunner", "AgentRunSpec"]

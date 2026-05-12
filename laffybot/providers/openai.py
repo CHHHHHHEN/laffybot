@@ -26,6 +26,8 @@ from laffybot.providers.types import (
     ERROR_SERVER,
     ERROR_TIMEOUT,
     LLMResponse,
+    StreamChunk,
+    ToolCallDelta,
     ToolCallRequest,
 )
 
@@ -747,7 +749,7 @@ class OpenAIProvider(BaseProvider):
         self,
         messages: list[dict[str, Any]],
         model: str,
-        on_chunk: Callable[[str], Awaitable[None]],
+        on_chunk: Callable[[StreamChunk], Awaitable[None]],
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -770,9 +772,40 @@ class OpenAIProvider(BaseProvider):
                     break
                 chunks.append(chunk)
                 if chunk.choices:
-                    text = getattr(chunk.choices[0].delta, "content", None)
+                    delta = chunk.choices[0].delta
+
+                    # Emit content chunk
+                    text = getattr(delta, "content", None)
                     if text:
-                        await on_chunk(text)
+                        await on_chunk(StreamChunk(content=text))
+
+                    # Emit reasoning chunk (for models like DeepSeek)
+                    reasoning = getattr(delta, "reasoning_content", None)
+                    if not reasoning:
+                        reasoning = getattr(delta, "reasoning", None)
+                    if reasoning:
+                        await on_chunk(StreamChunk(reasoning=reasoning))
+
+                    # Emit tool call delta chunks
+                    tool_calls = getattr(delta, "tool_calls", None)
+                    if tool_calls:
+                        for tc in tool_calls:
+                            tc_index = getattr(tc, "index", 0)
+                            tc_id = getattr(tc, "id", None)
+                            fn = getattr(tc, "function", None)
+                            tc_name = getattr(fn, "name", None) if fn else None
+                            tc_args = getattr(fn, "arguments", None) if fn else None
+
+                            await on_chunk(
+                                StreamChunk(
+                                    tool_call_delta=ToolCallDelta(
+                                        index=tc_index,
+                                        id=tc_id,
+                                        name=tc_name,
+                                        arguments_delta=tc_args,
+                                    )
+                                )
+                            )
             return self._parse_chunks(chunks)
         except asyncio.TimeoutError:
             return LLMResponse(

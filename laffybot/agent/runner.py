@@ -2,14 +2,32 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import asyncio
+import time
+import uuid
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
 
+from laffybot.agent.cancellation import CancellationToken, CancelledError
+from laffybot.agent.events import (
+    ERROR_INTERNAL,
+    ERROR_LLM,
+    SSEEvent,
+    event_cancelled,
+    event_content,
+    event_done,
+    event_error,
+    event_reasoning,
+    event_session_start,
+    event_tool_call,
+    event_tool_result,
+)
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.providers.base import BaseProvider
-from laffybot.providers.types import LLMResponse, ToolCallRequest
+from laffybot.providers.types import LLMResponse, StreamChunk, ToolCallRequest
 
 
 @dataclass(slots=True)
@@ -25,37 +43,68 @@ class AgentRunSpec:
     max_tokens: int | None = None
 
 
-@dataclass(slots=True)
-class AgentRunResult:
-    """Outcome of an agent execution."""
-
-    final_content: str | None
-    messages: list[dict[str, Any]]
-    tools_used: list[str] = field(default_factory=list)
-    usage: dict[str, int] = field(default_factory=dict)
-    stop_reason: str = "completed"
-    error: str | None = None
-
-
 class AgentRunner:
     """Run a tool-capable LLM loop."""
 
     def __init__(self, provider: BaseProvider):
         self.provider = provider
 
-    async def run(self, spec: AgentRunSpec) -> AgentRunResult:
+    async def run_stream(
+        self,
+        spec: AgentRunSpec,
+        session_id: str | None = None,
+        cancellation_token: CancellationToken | None = None,
+    ) -> AsyncGenerator[SSEEvent, None]:
+        """Execute agent with streaming SSE event output.
+
+        This is the primary execution method, yielding SSE events as the
+        agent processes the request. Replaces the synchronous run() method.
+
+        Args:
+            spec: Agent execution specification.
+            session_id: Optional session ID for session_start event.
+            cancellation_token: Optional token for cancellation support.
+
+        Yields:
+            SSEEvent objects representing the execution flow.
+
+        Event sequence:
+            session_start -> (content | reasoning)* -> [tool_call -> tool_result]+ -> done
+        """
+        token = cancellation_token or CancellationToken()
+        session_id = session_id or str(uuid.uuid4())
+        request_id = f"req_{uuid.uuid4().hex[:12]}"
+
         messages = list(spec.initial_messages)
-        final_content: str | None = None
         tools_used: list[str] = []
         usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
-        error: str | None = None
-        stop_reason = "completed"
+        stop_reason: str = "completed"
 
-        for iteration in range(spec.max_iterations):
-            try:
-                response = await self._request_model(spec, messages)
+        # Event queue for coordinating streaming callbacks
+        event_queue: asyncio.Queue[SSEEvent | None] = asyncio.Queue()
+
+        # Emit session_start
+        yield event_session_start(session_id, request_id)
+
+        try:
+            for iteration in range(spec.max_iterations):
+                # Cancellation checkpoint
+                token.check()
+
+                # Request LLM with streaming - events are put in queue
+                response = await self._request_model_stream_with_events(
+                    spec, messages, event_queue, token
+                )
                 self._accumulate_usage(usage, response.usage)
 
+                # Yield all queued content/reasoning events
+                while True:
+                    event = await event_queue.get()
+                    if event is None:
+                        break
+                    yield event
+
+                # Handle tool calls
                 if response.tool_calls:
                     assistant_message = self._build_assistant_message(
                         response.content or "",
@@ -64,22 +113,64 @@ class AgentRunner:
                     messages.append(assistant_message)
                     tools_used.extend(tc.name for tc in response.tool_calls)
 
-                    results = await self._execute_tools(spec, response.tool_calls)
+                    # Execute tools and emit events
+                    for tool_call in response.tool_calls:
+                        # Cancellation checkpoint before each tool
+                        token.check()
 
-                    for tool_call, result in zip(response.tool_calls, results):
-                        tool_message = {
+                        # Emit tool_call event
+                        yield event_tool_call(
+                            tool_call_id=tool_call.id,
+                            name=tool_call.name,
+                            arguments=tool_call.arguments,
+                        )
+
+                        # Execute tool with timing
+                        start_time = time.perf_counter()
+                        try:
+                            result = await spec.tools.execute(
+                                tool_call.name, tool_call.arguments
+                            )
+                            success = True
+                            error_message = None
+                        except CancelledError:
+                            raise
+                        except Exception as exc:
+                            logger.exception("Tool {} failed", tool_call.name)
+                            result = f"Error: {type(exc).__name__}: {exc}"
+                            success = False
+                            error_message = str(exc)
+
+                        duration_ms = int((time.perf_counter() - start_time) * 1000)
+
+                        # Normalize result for message history
+                        normalized_result = self._normalize_tool_result(
+                            spec, tool_call.name, result
+                        )
+
+                        # Emit tool_result event
+                        yield event_tool_result(
+                            tool_call_id=tool_call.id,
+                            name=tool_call.name,
+                            result=normalized_result,
+                            success=success,
+                            duration_ms=duration_ms,
+                            error_message=error_message,
+                        )
+
+                        # Append to message history
+                        messages.append({
                             "role": "tool",
                             "tool_call_id": tool_call.id,
                             "name": tool_call.name,
-                            "content": self._normalize_tool_result(
-                                spec, tool_call.name, result
-                            ),
-                        }
-                        messages.append(tool_message)
-                    continue
+                            "content": normalized_result,
+                        })
 
-                clean = response.content or ""
-                if not clean.strip():
+                    continue  # Next iteration
+
+                # No tool calls - check for final content
+                content = response.content or ""
+                if not content.strip():
                     logger.warning(
                         "Empty response on turn {} for model {}",
                         iteration,
@@ -87,64 +178,66 @@ class AgentRunner:
                     )
                     continue
 
-                messages.append(self._build_assistant_message(clean, []))
-                final_content = clean
+                # Final response
+                messages.append(self._build_assistant_message(content, []))
                 break
 
-            except Exception as exc:
-                logger.exception("Error on iteration {}", iteration)
-                error = f"Error: {type(exc).__name__}: {exc}"
-                final_content = error
-                stop_reason = "error"
-                break
-        else:
-            stop_reason = "max_iterations"
-            final_content = f"Reached max iterations ({spec.max_iterations})"
+            else:
+                # Loop exhausted
+                stop_reason = "max_iterations"
 
-        return AgentRunResult(
-            final_content=final_content,
-            messages=messages,
-            tools_used=tools_used,
-            usage=usage,
-            stop_reason=stop_reason,
-            error=error,
+        except CancelledError as e:
+            # Cancellation - emit cancelled event
+            yield event_cancelled(e.reason)
+            stop_reason = "cancelled"
+        except Exception as exc:
+            # Error - emit error event
+            logger.exception("Error during agent execution")
+            error_code = ERROR_LLM if "api" in str(type(exc).__name__).lower() else ERROR_INTERNAL
+            yield event_error(
+                code=error_code,
+                message=str(exc),
+                details={"error_type": type(exc).__name__},
+            )
+            stop_reason = "error"
+
+        # Emit done event
+        yield event_done(
+            stop_reason=stop_reason,  # type: ignore
+            usage=usage if usage["prompt_tokens"] > 0 else None,
+            tools_used=tools_used if tools_used else None,
         )
 
-    async def _request_model(
+    async def _request_model_stream_with_events(
         self,
         spec: AgentRunSpec,
         messages: list[dict[str, Any]],
+        event_queue: asyncio.Queue[SSEEvent | None],
+        cancellation_token: CancellationToken,
     ) -> LLMResponse:
-        return await self.provider.chat_completion(
+        """Request LLM with streaming, putting content/reasoning events in queue."""
+        cancellation_token.check()
+
+        async def on_chunk(chunk: StreamChunk) -> None:
+            if chunk.content:
+                await event_queue.put(event_content(chunk.content))
+            if chunk.reasoning:
+                await event_queue.put(event_reasoning(chunk.reasoning))
+            # Tool call deltas are accumulated by provider, not emitted here
+
+        response = await self.provider.chat_completion_stream(
             messages=messages,
             model=spec.model,
+            on_chunk=on_chunk,
             tools=spec.tools.get_definitions(),
             temperature=spec.temperature,
             max_tokens=spec.max_tokens,
         )
 
-    async def _execute_tools(
-        self,
-        spec: AgentRunSpec,
-        tool_calls: list[ToolCallRequest],
-    ) -> list[Any]:
-        results: list[Any] = []
-        for tool_call in tool_calls:
-            result = await self._run_tool(spec, tool_call)
-            results.append(result)
-        return results
+        # Signal end of events for this request
+        await event_queue.put(None)
 
-    async def _run_tool(
-        self,
-        spec: AgentRunSpec,
-        tool_call: ToolCallRequest,
-    ) -> Any:
-        try:
-            result = await spec.tools.execute(tool_call.name, tool_call.arguments)
-            return result
-        except Exception as exc:
-            logger.exception("Tool {} failed", tool_call.name)
-            return f"Error: {type(exc).__name__}: {exc}"
+        return response
 
     def _normalize_tool_result(
         self,
