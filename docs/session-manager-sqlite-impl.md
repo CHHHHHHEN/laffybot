@@ -222,13 +222,13 @@ WHERE session_id = ?
 async def update_session_status(
     self,
     session_id: str,
-    status: str,
+    status: SessionStatus,
     current_request_id: str | None = None,
     error_message: str | None = None,
-    expected_status: str | None = None,  # 乐观锁：期望的当前状态
+    expected_status: SessionStatus | None = None,  # 乐观锁：期望的当前状态
 ) -> bool:
     db = await self._ensure_db()
-    now = datetime.utcnow().isoformat()
+    now = self._format_dt(self._now())  # 使用 UTC 时间
     
     # 构建带乐观锁的 UPDATE
     sql = """
@@ -236,30 +236,32 @@ async def update_session_status(
         SET status = ?, current_request_id = ?, error_message = ?, updated_at = ?
         WHERE session_id = ?
     """
-    params = [status, current_request_id, error_message, now, session_id]
+    params: list[Any] = [status, current_request_id, error_message, now, session_id]
     
     # 如果提供了期望状态，添加乐观锁条件
     if expected_status is not None:
         sql += " AND status = ?"
         params.append(expected_status)
     
-    await db.execute(sql, params)
+    cursor = await db.execute(sql, params)
     await db.commit()
     
     # 检查是否更新成功
-    affected = db.changes()
-    if affected == 0:
-        if expected_status is not None:
-            # 乐观锁冲突
-            raise SessionStateError(
-                session_id=session_id,
-                current_status=await self._get_status(session_id)
-            )
-        else:
-            # 会话不存在
-            raise SessionNotFoundError(session_id=session_id)
+    if cursor.rowcount and cursor.rowcount > 0:
+        return True
     
-    return True
+    # 更新失败，判断原因
+    try:
+        current = await self.get_session(session_id)
+    except SessionNotFoundError:
+        raise  # 会话不存在
+    
+    if expected_status is not None:
+        # 乐观锁冲突
+        raise SessionStateError(session_id, current.status)
+    
+    # 其他情况（理论上不会到达这里）
+    raise SessionNotFoundError(session_id)
 ```
 
 **乐观锁优势：**
@@ -271,19 +273,24 @@ async def update_session_status(
 #### delete_session
 
 **实现策略：**
-1. 检查会话状态是否为 busy（在 SessionManager 层）
-2. 执行 DELETE 语句
-3. 外键约束自动级联删除消息
+1. 执行 DELETE 语句
+2. 外键约束自动级联删除消息
+3. 检查受影响行数判断是否删除成功
 
-**异常处理：** 如果会话不存在，抛出 SessionNotFoundError
+**异常处理：** 如果会话不存在（受影响行数为 0），抛出 SessionNotFoundError
+
+**注意：** busy 状态检查在 SessionManager 层执行，不在 SQLiteStore 层
 
 #### list_sessions
 
 **实现策略：**
 1. 构建动态 SQL（支持状态过滤）
-2. 使用 LIMIT 和 OFFSET 分页
-3. 执行 COUNT 查询获取总数
-4. 返回 (会话列表, 总数) 元组
+2. 默认过滤掉 `inactive` 状态的会话（除非显式指定）
+3. 使用 LIMIT 和 OFFSET 分页
+4. 执行 COUNT 查询获取总数
+5. 返回 (会话列表, 总数) 元组
+
+**排序规则：** 按 `updated_at DESC, session_id DESC` 排序，确保最近活动的会话在前，相同更新时间的会话按 ID 降序
 
 **性能优化：** 使用索引加速状态过滤和时间排序
 
@@ -304,11 +311,14 @@ async def update_session_status(
 
 **实现策略：**
 1. 构建动态 SQL（支持 before 时间过滤）
-2. 使用 ORDER BY timestamp ASC 保证时间正序
+2. 使用 ORDER BY timestamp ASC, id ASC 保证时间正序，相同时间戳的消息按插入顺序
 3. 使用 LIMIT 限制返回数量
 4. 反序列化 metadata JSON
+5. 如果结果为空，验证会话是否存在（避免返回空列表给不存在的会话）
 
 **分页支持：** 通过 `before` 参数实现基于时间戳的分页
+
+**会话验证：** 当查询结果为空时，会调用 `get_session()` 验证会话是否存在，如果不存在则抛出 `SessionNotFoundError`
 
 #### get_message_count
 
@@ -349,12 +359,18 @@ SQLite 默认自动提交模式，需要显式事务保证原子性。
 
 **事务实现：**
 ```python
-async with db.execute("BEGIN"):
+await db.execute("BEGIN")
+try:
     # 执行多个操作
     await db.execute(...)
     await db.execute(...)
     await db.commit()
+except Exception:
+    await db.rollback()
+    raise
 ```
+
+**异常处理：** 使用 try-except 确保异常时回滚事务，特别是 `aiosqlite.IntegrityError`（外键约束违反）转换为 `SessionNotFoundError`
 
 #### 隔离级别
 使用 SQLite 默认隔离级别（SERIALIZABLE），保证：
@@ -397,16 +413,22 @@ PRAGMA synchronous = NORMAL;
 ```
 SessionManager.send_message()
     ├─ 获取会话锁
-    ├─ 检查状态是否为 idle
-    ├─ 更新状态为 busy（数据库 UPDATE）
+    ├─ 检查状态是否为 idle/inactive/busy
+    ├─ 更新状态为 busy（数据库 UPDATE，带乐观锁）
+    ├─ 保存用户消息
+    ├─ 构建上下文
+    ├─ 创建 AgentRunner 实例
     ├─ 执行 Agent
-    ├─ 更新状态为 idle/error（数据库 UPDATE）
-    └─ 释放会话锁
+    ├─ 保存助手消息（如果成功）
+    ├─ 更新状态为 idle/error（数据库 UPDATE，带乐观锁）
+    └─ 释放会话锁和 CancellationToken
 ```
 
 **异常情况处理：**
-- 使用 try-finally 确保锁释放
+- 使用 try-finally 确保锁释放和资源清理
 - 数据库操作失败时回滚状态
+- 取消时恢复状态为 idle
+- 错误时更新状态为 error 并记录错误信息
 
 ## 资源管理
 
