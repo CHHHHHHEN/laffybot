@@ -77,6 +77,9 @@ class AgentRunner:
         session_id = session_id or str(uuid.uuid4())
         request_id = request_id or f"req_{uuid.uuid4().hex[:12]}"
 
+        log = logger.bind(session_id=session_id, request_id=request_id)
+        log.info("Agent run started: model={}, max_iterations={}", spec.model, spec.max_iterations)
+
         messages = list(spec.initial_messages)
         tools_used: list[str] = []
         usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -93,11 +96,15 @@ class AgentRunner:
                 # Cancellation checkpoint
                 token.check()
 
+                log.debug("LLM request started: iteration={}", iteration)
+
                 # Request LLM with streaming - events are put in queue
                 response = await self._request_model_stream_with_events(
                     spec, messages, event_queue, token
                 )
                 self._accumulate_usage(usage, response.usage)
+
+                log.debug("LLM response received: content_len={}, tool_calls={}", len(response.content or ""), len(response.tool_calls or []))
 
                 # Yield all queued content/reasoning events
                 while True:
@@ -129,6 +136,7 @@ class AgentRunner:
 
                         # Execute tool with timing
                         start_time = time.perf_counter()
+                        log.debug("Tool execution started: name={}", tool_call.name)
                         try:
                             result = await spec.tools.execute(
                                 tool_call.name, tool_call.arguments
@@ -144,6 +152,7 @@ class AgentRunner:
                             error_message = str(exc)
 
                         duration_ms = int((time.perf_counter() - start_time) * 1000)
+                        log.debug("Tool execution completed: name={}, duration_ms={}, success={}", tool_call.name, duration_ms, success)
 
                         # Normalize result for message history
                         normalized_result = self._normalize_tool_result(
@@ -190,6 +199,7 @@ class AgentRunner:
 
         except CancelledError as e:
             # Cancellation - emit cancelled event
+            log.warning("Agent run cancelled: reason={}", e.reason)
             yield event_cancelled(e.reason)
             stop_reason = "cancelled"
         except Exception as exc:
@@ -204,6 +214,7 @@ class AgentRunner:
             stop_reason = "error"
 
         # Emit done event
+        log.info("Agent run completed: stop_reason={}, usage={}", stop_reason, usage)
         yield event_done(
             stop_reason=stop_reason,  # type: ignore
             usage=usage if usage["prompt_tokens"] > 0 else None,

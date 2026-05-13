@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
+from loguru import logger
 
 from laffybot.crypto import decrypt_api_key, encrypt_api_key
 from laffybot.providers.config import ProviderConfig
@@ -387,11 +388,13 @@ class SQLiteProviderStore(ProviderStore):
             (_ACTIVE_MODEL_KEY, model_id),
         )
         await db.commit()
+        logger.info("Active selection set: provider_id={}, model_id={}", provider_id, model_id)
 
     async def clear_active_selection(self) -> None:
         db = await self._ensure_db()
         await db.execute("DELETE FROM app_settings WHERE key IN (?, ?)", (_ACTIVE_PROVIDER_KEY, _ACTIVE_MODEL_KEY))
         await db.commit()
+        logger.info("Active selection cleared")
 
     async def get_provider_config(self, provider_id: str) -> ProviderConfig:
         provider = await self.get_provider(provider_id)
@@ -404,7 +407,12 @@ class SQLiteProviderStore(ProviderStore):
                 row = await cursor.fetchone()
             encrypted = row["api_key_encrypted"] if row is not None else None
             if encrypted:
-                api_key_plain = decrypt_api_key(encrypted)
+                try:
+                    api_key_plain = decrypt_api_key(encrypted)
+                except Exception as exc:
+                    logger.error("Failed to decrypt API key for provider_id={}: {}", provider_id, exc)
+                    raise
+        logger.debug("Retrieved provider config: provider_id={}", provider_id)
         return ProviderConfig(
             provider_id=provider.provider_id,
             name=provider.name,
@@ -418,6 +426,7 @@ class SQLiteProviderStore(ProviderStore):
         if self._db is not None:
             await self._db.close()
             self._db = None
+            logger.debug("Provider store closed")
 
     def _row_to_provider(self, row: aiosqlite.Row) -> ProviderRow:
         return ProviderRow(

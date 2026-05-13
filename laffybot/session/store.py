@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
+from loguru import logger
 
 from laffybot.session.errors import (
     SessionNotFoundError,
@@ -163,11 +164,16 @@ class SQLiteStore(SessionStore):
         async with db.execute("PRAGMA table_info(messages)") as cursor:
             columns = {row["name"] for row in await cursor.fetchall()}
 
+        migrated = False
         if "input_tokens" not in columns:
             await db.execute("ALTER TABLE messages ADD COLUMN input_tokens INTEGER")
+            migrated = True
         if "output_tokens" not in columns:
             await db.execute("ALTER TABLE messages ADD COLUMN output_tokens INTEGER")
+            migrated = True
         await db.commit()
+        if migrated:
+            logger.info("Database migration completed: added token columns")
 
     @staticmethod
     def _now() -> datetime:
@@ -284,6 +290,10 @@ class SQLiteStore(SessionStore):
         except SessionNotFoundError:
             raise
         if expected_status is not None:
+            logger.warning(
+                "Session status conflict: session_id={}, expected={}, actual={}",
+                session_id, expected_status, current.status,
+            )
             raise SessionStateError(session_id, current.status)
         raise SessionNotFoundError(session_id)
 
@@ -396,3 +406,4 @@ class SQLiteStore(SessionStore):
         if self._db is not None:
             await self._db.close()
             self._db = None
+            logger.debug("Session store closed")

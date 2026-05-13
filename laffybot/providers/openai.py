@@ -754,6 +754,7 @@ class OpenAIProvider(BaseProvider):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse:
+        logger.debug("OpenAI stream started: model={}", model)
         idle_timeout_s = _stream_idle_timeout_s()
         try:
             kwargs = self._build_kwargs(messages, model, tools, temperature, max_tokens)
@@ -806,12 +807,15 @@ class OpenAIProvider(BaseProvider):
                                     )
                                 )
                             )
+            logger.debug("OpenAI stream completed: model={}, chunks={}", model, len(chunks))
             return self._parse_chunks(chunks)
         except asyncio.TimeoutError:
+            logger.error("OpenAI stream timeout: model={}, idle_timeout_s={}", model, idle_timeout_s)
             return LLMResponse(
                 content=f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds",
                 finish_reason="error",
                 error_kind=ERROR_TIMEOUT,
             )
         except Exception as e:
+            logger.error("OpenAI stream error: model={}, error={}", model, e)
             return self._handle_error(e)

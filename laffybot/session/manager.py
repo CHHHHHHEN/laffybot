@@ -7,6 +7,8 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from loguru import logger
+
 from laffybot.agent.cancellation import CancellationToken, CancelledError
 from laffybot.agent.events import SSEEvent, event_error
 from laffybot.agent.runner import AgentRunner, AgentRunSpec
@@ -67,12 +69,14 @@ class SessionManager:
         if selection is None:
             raise NoActiveProviderError()
         session_id = str(uuid.uuid4())
-        return await self.store.create_session(
+        session = await self.store.create_session(
             session_id=session_id,
             model=selection.model_name,
             system_prompt=system_prompt,
             max_iterations=max_iterations,
         )
+        logger.info("Session created: session_id={}, model={}", session_id, selection.model_name)
+        return session
 
     async def get_session_info(self, session_id: str) -> SessionInfo:
         return await self.store.get_session(session_id)
@@ -97,6 +101,7 @@ class SessionManager:
         if session.status == "busy":
             raise SessionBusyError(session_id, session.current_request_id)
         await self.store.delete_session(session_id)
+        logger.info("Session deleted: session_id={}", session_id)
 
     async def cancel_request(self, session_id: str, reason: str | None = None) -> str:
         session = await self.store.get_session(session_id)
@@ -106,6 +111,7 @@ class SessionManager:
         if token is None:
             raise SessionNotBusyError(session_id)
         token.cancel(reason)
+        logger.warning("Request cancelled: session_id={}, request_id={}, reason={}", session_id, session.current_request_id, reason)
         return session.current_request_id or ""
 
     async def send_message(
@@ -132,6 +138,9 @@ class SessionManager:
             response_status: SessionStatus = "idle"
             error_message: str | None = None
 
+            log = logger.bind(session_id=session_id, request_id=request_id)
+            log.info("Message send started: content_len={}", len(content))
+
             try:
                 await self.store.update_session_status(
                     session_id,
@@ -139,6 +148,7 @@ class SessionManager:
                     current_request_id=request_id,
                     expected_status="idle",
                 )
+                log.debug("Session status changed: idle -> busy")
                 await self.store.save_message(session_id, "user", content)
 
                 messages = await self._build_messages(session, content, selection.model_name)
@@ -194,6 +204,7 @@ class SessionManager:
                         )
                         break
             except CancelledError as exc:
+                log.warning("Message send cancelled: reason={}", exc.reason)
                 await self.store.update_session_status(
                     session_id,
                     "idle",
@@ -207,6 +218,7 @@ class SessionManager:
                     details={"reason": exc.reason} if exc.reason else None,
                 )
             except Exception as exc:
+                log.error("Message send failed: error={}", exc)
                 await self.store.update_session_status(
                     session_id,
                     "error",

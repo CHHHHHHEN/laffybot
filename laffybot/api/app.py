@@ -48,7 +48,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+        logger.info("Application started: version={}", __version__)
         yield
+        logger.info("Application shutting down")
         for obj in (provider_store_obj, store_obj):
             try:
                 await asyncio.wait_for(obj.close(), timeout=5)

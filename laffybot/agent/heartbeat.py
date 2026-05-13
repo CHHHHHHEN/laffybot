@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 
+from loguru import logger
+
 from laffybot.agent.events import event_ping
 
 # Default heartbeat interval (15 seconds)
@@ -93,6 +95,7 @@ class HeartbeatManager:
                 # Timeout expired without reset - this is where we'd yield ping
                 # But since this is a background task, we need a different approach
                 # The caller should use wait_for_ping() instead
+                logger.debug("Heartbeat ping triggered")
                 pass
 
     async def wait_for_ping(self) -> str | None:

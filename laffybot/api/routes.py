@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Header
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
+from loguru import logger
 
 from laffybot import __version__
 from laffybot.agent.events import SSEEvent, event_error
@@ -101,6 +102,7 @@ async def _stream_session_events(
             event_index += 1
             yield _sse_frame(event, f"evt_{event_index}")
     except SessionNotFoundError as exc:
+        logger.error("SSE stream error: session_id={}, error={}", session_id, exc)
         event_index += 1
         yield _sse_frame(
             event_error(
@@ -112,6 +114,7 @@ async def _stream_session_events(
         yield "event: done\ndata: {}\n\n"
         return
     except SessionError as exc:
+        logger.error("SSE stream error: session_id={}, error={}", session_id, exc)
         event_index += 1
         if isinstance(exc, SessionBusyError):
             code = "SESSION_BUSY"
@@ -189,6 +192,7 @@ async def send_message(
     manager: SessionManager = Depends(get_session_manager),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
+    logger.info("API request: POST /sessions/{}/messages, content_len={}", session_id, len(payload.content))
     session = await manager.get_session_info(session_id)
     if session.status == "busy":
         raise SessionBusyError(session_id, session.current_request_id)

@@ -55,6 +55,10 @@ class ApiConfig(BaseModel):
     )
     host: str = Field(default="0.0.0.0", description="HTTP bind host.")
     port: int = Field(default=8000, ge=1, le=65535, description="HTTP bind port.")
+    log_level: str = Field(
+        default="DEBUG",
+        description="Logging level (DEBUG, INFO, WARNING, ERROR).",
+    )
     cors_origins: list[str] = Field(
         default_factory=lambda: ["*"],
         description="Allowed CORS origins.",

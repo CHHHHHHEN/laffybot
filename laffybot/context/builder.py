@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Any
 
+from loguru import logger
+
 from .base import ContextBuilder, TokenCounter
 from .templates import SystemPromptTemplate
 from .tokens import UsageBasedTokenCounter
@@ -77,7 +79,7 @@ class SimpleContextBuilder(ContextBuilder):
         messages.append({"role": "user", "content": current_message})
 
         # 4. Apply capacity control
-        messages = self._apply_capacity_control(messages, effective_prompt is not None)
+        messages = self._apply_capacity_control(messages, effective_prompt is not None, session_id)
 
         return messages
 
@@ -85,6 +87,7 @@ class SimpleContextBuilder(ContextBuilder):
         self,
         messages: list[dict[str, Any]],
         has_system_prompt: bool,
+        session_id: str,
     ) -> list[dict[str, Any]]:
         """Apply token and message count limits.
 
@@ -134,6 +137,12 @@ class SimpleContextBuilder(ContextBuilder):
         if not needs_truncation:
             return messages
 
+        original_count = len(messages)
+        logger.debug(
+            "Context capacity control triggered: session_id={}, original_messages={}, max_tokens={}, max_messages={}",
+            session_id, original_count, self._config.max_tokens, self._config.max_messages,
+        )
+
         # Truncate history while respecting min_preserve_pairs
         min_pairs = self._config.min_preserve_pairs
         # Each pair is 2 messages (user + assistant)
@@ -162,6 +171,11 @@ class SimpleContextBuilder(ContextBuilder):
             result.append(fixed_messages[0])
         result.extend(truncatable)
         result.append(fixed_messages[-1])  # Current message
+
+        logger.debug(
+            "Context truncated: session_id={}, messages {} -> {}",
+            session_id, original_count, len(result),
+        )
 
         return result
 
