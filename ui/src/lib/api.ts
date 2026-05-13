@@ -124,10 +124,6 @@ export function cancelRequest(sessionId: string, reason?: string) {
 
 /* ---- SSE API ---- */
 
-export function createSseStream(_sessionId: string, _content: string): EventSource {
-  throw new Error('Use connectSseStream for POST-based SSE')
-}
-
 export async function connectSseStream(
   sessionId: string,
   content: string,

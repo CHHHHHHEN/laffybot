@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MessageBubble } from './MessageBubble'
 import type { Message } from '@/stores/chat-store'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
@@ -14,22 +14,26 @@ interface MessageListProps {
 export function MessageList({ messages, isStreaming, isLoading, error, onRetry }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const isAtBottom = useRef(true)
+  const isAtBottomRef = useRef(true)
+  const [isAtBottom, setIsAtBottom] = useState(true)
 
   const checkIfAtBottom = () => {
     const el = containerRef.current
     if (!el) return
     const threshold = 100
-    isAtBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    isAtBottomRef.current = atBottom
+    setIsAtBottom(atBottom)
   }
 
   const scrollToBottom = (smooth = true) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' })
-    isAtBottom.current = true
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
   }
 
   useEffect(() => {
-    if (isAtBottom.current && messages.length > 0) {
+    if (isAtBottomRef.current && messages.length > 0) {
       scrollToBottom(!isStreaming)
     }
   }, [messages, isStreaming])
@@ -86,7 +90,7 @@ export function MessageList({ messages, isStreaming, isLoading, error, onRetry }
       </div>
 
       <ScrollToBottomButton
-        visible={!isAtBottom.current}
+        visible={!isAtBottom}
         onClick={() => scrollToBottom()}
       />
     </div>

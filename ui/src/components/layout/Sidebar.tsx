@@ -5,9 +5,10 @@ import { NavLinks } from './NavLinks'
 import { GlobalModelSelector } from './GlobalModelSelector'
 import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2 } from 'lucide-react'
 import { useSessionStore } from '@/stores/session-store'
+import { useProviderStore } from '@/stores/provider-store'
 import { NewSessionDialog } from '@/components/ui/NewSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useToastStore } from '@/components/ui/Toast'
+import { useToastStore } from '@/stores/toast-store'
 import type { Session } from '@/stores/session-store'
 
 export function Sidebar() {
@@ -16,6 +17,7 @@ export function Sidebar() {
   const sessions = useSessionStore((s) => s.sessions)
   const activeSessionId = useSessionStore((s) => s.activeSessionId)
   const isLoading = useSessionStore((s) => s.isLoading)
+  const activeSelection = useProviderStore((s) => s.activeSelection)
   const createSession = useSessionStore((s) => s.createSession)
   const deleteSession = useSessionStore((s) => s.deleteSession)
   const [showNewDialog, setShowNewDialog] = useState(false)
@@ -90,7 +92,7 @@ export function Sidebar() {
           <NavLinks />
 
           {/* Global model selector */}
-          {sidebarOpen && <GlobalModelSelector />}
+          {sidebarOpen && <GlobalModelSelector key={activeSelection ? `${activeSelection.provider_id}:${activeSelection.model_id}` : 'empty'} />}
 
           {/* New chat button */}
           <div className="px-3 mb-2">
@@ -150,12 +152,14 @@ export function Sidebar() {
         </div>
       </aside>
 
-      <NewSessionDialog
-        isOpen={showNewDialog}
-        onSubmit={handleCreateSession}
-        onCancel={() => { setShowNewDialog(false); setDialogError(null) }}
-        error={dialogError}
-      />
+      {showNewDialog && (
+        <NewSessionDialog
+          isOpen={true}
+          onSubmit={handleCreateSession}
+          onCancel={() => { setShowNewDialog(false); setDialogError(null) }}
+          error={dialogError}
+        />
+      )}
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}

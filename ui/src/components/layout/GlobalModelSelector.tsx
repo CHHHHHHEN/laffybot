@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useProviderStore } from '@/stores/provider-store'
 import { Settings } from 'lucide-react'
+import { useProviderStore } from '@/stores/provider-store'
 
 export function GlobalModelSelector() {
   const navigate = useNavigate()
@@ -11,15 +11,12 @@ export function GlobalModelSelector() {
   const fetchModels = useProviderStore((s) => s.fetchModels)
   const setActiveSelection = useProviderStore((s) => s.setActiveSelection)
 
-  const [selectedProviderId, setSelectedProviderId] = useState('')
-  const [selectedModelId, setSelectedModelId] = useState('')
-
-  useEffect(() => {
-    if (activeSelection) {
-      setSelectedProviderId(activeSelection.provider_id)
-      setSelectedModelId(activeSelection.model_id)
-    }
-  }, [activeSelection])
+  const [selectedProviderId, setSelectedProviderId] = useState(() => {
+    return useProviderStore.getState().activeSelection?.provider_id ?? ''
+  })
+  const [selectedModelId, setSelectedModelId] = useState(() => {
+    return useProviderStore.getState().activeSelection?.model_id ?? ''
+  })
 
   useEffect(() => {
     if (selectedProviderId && !models[selectedProviderId]) {

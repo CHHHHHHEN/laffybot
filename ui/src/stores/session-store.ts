@@ -74,24 +74,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   createSession: async (data) => {
-    try {
-      const session = await api.createSession(data)
-      set((state) => ({
-        sessions: [
-          {
-            session_id: session.session_id,
-            model: session.model,
-            status: session.status,
-            created_at: session.created_at,
-            message_count: session.message_count,
-          },
-          ...state.sessions,
-        ],
-      }))
-      return session
-    } catch (err) {
-      throw err
-    }
+    const session = await api.createSession(data)
+    set((state) => ({
+      sessions: [
+        {
+          session_id: session.session_id,
+          model: session.model,
+          status: session.status,
+          created_at: session.created_at,
+          message_count: session.message_count,
+        },
+        ...state.sessions,
+      ],
+    }))
+    return session
   },
 
   deleteSession: async (id) => {

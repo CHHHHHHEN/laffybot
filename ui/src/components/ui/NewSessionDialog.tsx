@@ -18,14 +18,6 @@ export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessi
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (isOpen) {
-      setSystemPrompt('')
-      setMaxIterations(10)
-      setTimeout(() => inputRef.current?.focus(), 0)
-    }
-  }, [isOpen])
-
-  useEffect(() => {
     if (!isOpen) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel()

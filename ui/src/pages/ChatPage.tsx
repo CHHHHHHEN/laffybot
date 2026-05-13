@@ -11,7 +11,7 @@ import { useSessionStore, type Session } from '@/stores/session-store'
 import { connectSseStream } from '@/lib/sse'
 import type { SseEvent } from '@/lib/sse'
 import { getHistory, cancelRequest } from '@/lib/api'
-import { useToastStore } from '@/components/ui/Toast'
+import { useToastStore } from '@/stores/toast-store'
 
 export function ChatPage() {
   const { sessionId } = useParams()
@@ -155,7 +155,7 @@ export function ChatPage() {
 
       try {
         await connectSseStream(sessionId, content, handleSseEvent, abort.signal)
-      } catch (err) {
+      } catch {
         if (abort.signal.aborted) return
         useToastStore.getState().addToast('error', '发送消息失败，请重试')
         chatStoreActions.setConnectionStatus('error')
@@ -213,12 +213,14 @@ export function ChatPage() {
           </button>
         </div>
 
-        <NewSessionDialog
-          isOpen={showNewDialog}
-          onSubmit={handleCreateSession}
-          onCancel={() => setShowNewDialog(false)}
-          error={dialogError}
-        />
+        {showNewDialog && (
+          <NewSessionDialog
+            isOpen={true}
+            onSubmit={handleCreateSession}
+            onCancel={() => setShowNewDialog(false)}
+            error={dialogError}
+          />
+        )}
       </div>
     )
   }
@@ -238,12 +240,14 @@ export function ChatPage() {
         onCancel={handleCancel}
       />
 
-      <NewSessionDialog
-        isOpen={showNewDialog}
-        onSubmit={handleCreateSession}
-        onCancel={() => setShowNewDialog(false)}
-        error={dialogError}
-      />
+      {showNewDialog && (
+        <NewSessionDialog
+          isOpen={true}
+          onSubmit={handleCreateSession}
+          onCancel={() => setShowNewDialog(false)}
+          error={dialogError}
+        />
+      )}
     </div>
   )
 }

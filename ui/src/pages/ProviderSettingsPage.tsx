@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Globe, Loader2, Plug } from 'lucide-react'
 import { useProviderStore } from '@/stores/provider-store'
 import { ProviderForm } from '@/components/settings/ProviderForm'
 import { ModelList } from '@/components/settings/ModelList'
-import { useToastStore } from '@/components/ui/Toast'
+import { useToastStore } from '@/stores/toast-store'
 import { testProvider } from '@/lib/api'
 
 export function ProviderSettingsPage() {
@@ -164,20 +164,24 @@ export function ProviderSettingsPage() {
         </div>
       )}
 
-      <ProviderForm
-        isOpen={showForm}
-        onSave={handleCreate}
-        onCancel={() => setShowForm(false)}
-        title="添加提供商"
-      />
+      {showForm && (
+        <ProviderForm
+          isOpen={true}
+          onSave={handleCreate}
+          onCancel={() => setShowForm(false)}
+          title="添加提供商"
+        />
+      )}
 
-      <ProviderForm
-        isOpen={editingId !== null}
-        initialData={editingProvider ? { name: editingProvider.name, base_url: editingProvider.base_url } : undefined}
-        onSave={handleUpdate}
-        onCancel={() => setEditingId(null)}
-        title="编辑提供商"
-      />
+      {editingId !== null && (
+        <ProviderForm
+          isOpen={true}
+          initialData={editingProvider ? { name: editingProvider.name, base_url: editingProvider.base_url } : undefined}
+          onSave={handleUpdate}
+          onCancel={() => setEditingId(null)}
+          title="编辑提供商"
+        />
+      )}
     </div>
   )
 }

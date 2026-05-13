@@ -28,18 +28,6 @@ export function ProviderForm({ isOpen, initialData, onSave, onCancel, title }: P
   const isEdit = !!initialData?.name
 
   useEffect(() => {
-    if (isOpen) {
-      setName(initialData?.name ?? '')
-      setBaseUrl(initialData?.base_url ?? '')
-      setApiKey('')
-      setHeaderKeys([])
-      setHeaderValues([])
-      setError(null)
-      setTimeout(() => nameRef.current?.focus(), 0)
-    }
-  }, [isOpen, initialData])
-
-  useEffect(() => {
     if (!isOpen) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel()

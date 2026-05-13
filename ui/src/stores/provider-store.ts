@@ -38,7 +38,7 @@ interface ProviderState {
   setActiveSelection: (providerId: string, modelId: string) => Promise<void>
 }
 
-export const useProviderStore = create<ProviderState>((set, get) => ({
+export const useProviderStore = create<ProviderState>((set) => ({
   providers: [],
   models: {},
   activeSelection: null,
