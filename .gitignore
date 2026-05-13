@@ -8,3 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
+
+
+# db
+laffybot.db
+laffybot.db-wal
+laffybot.db-shm
+
+# config
+config.json
