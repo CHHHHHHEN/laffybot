@@ -21,6 +21,12 @@ dependencies = [
     "jinja2",
 ]
 
+[project.scripts]
+laffybot = "laffybot.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["laffybot*"]
+
 [project.optional-dependencies]
 
 dev = [
