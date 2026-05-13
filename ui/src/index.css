@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  /* Neutral palette - light mode */
+  --color-page-bg: #ffffff;
+  --color-secondary-bg: #f5f5f5;
+  --color-hover-bg: #ebebeb;
+  --color-border: #e5e5e5;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-placeholder: #999999;
+  --color-text-disabled: #cccccc;
+
+  /* Semantic colors */
+  --color-success: #16a34a;
+  --color-info: #2563eb;
+  --color-error: #dc2626;
+  --color-reasoning: #d97706;
+
+  /* Brand colors (blue-purple range, to be finalized) */
+  --color-brand: #6366f1;
+  --color-brand-hover: #4f46e5;
+  --color-brand-light: rgba(99, 102, 241, 0.12);
+  --color-brand-border: rgba(99, 102, 241, 0.5);
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* Z-index layers */
+  --z-sidebar: 1;
+  --z-sidebar-overlay: 10;
+  --z-floating-button: 20;
+  --z-dropdown: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-loading: 60;
+
+  /* Font sizes mapping to design spec */
+  --text-h1: 24px;
+  --text-h1--line-height: 1.4;
+  --text-h2: 18px;
+  --text-h2--line-height: 1.4;
+  --text-h3: 16px;
+  --text-h3--line-height: 1.4;
+  --text-body: 14px;
+  --text-body--line-height: 1.6;
+  --text-caption: 12px;
+  --text-caption--line-height: 1.4;
+  --text-code: 13px;
+  --text-code--line-height: 1.5;
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-page-bg: #0f0f1a;
+  --color-secondary-bg: #1a1a2e;
+  --color-hover-bg: #252540;
+  --color-border: #2e2e45;
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #9ca3af;
+  --color-text-placeholder: #6b7280;
+  --color-text-disabled: #4b5563;
+  --color-brand: #818cf8;
+  --color-brand-hover: #6366f1;
+  --color-success: #22c55e;
+  --color-info: #3b82f6;
+  --color-error: #ef4444;
+  --color-reasoning: #f59e0b;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-page-bg);
+  color: var(--color-text-primary);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+}
