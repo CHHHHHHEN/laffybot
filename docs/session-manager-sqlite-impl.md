@@ -80,7 +80,7 @@ CREATE INDEX idx_sessions_created_at ON sessions(created_at);
 
 **字段说明：**
 - `session_id`: UUID 格式，主键
-- `status`: 枚举值（idle/busy/error/inactive）
+- `status`: 枚举值（idle/busy/error）
 - `created_at`, `updated_at`: ISO 8601 格式时间戳
 - `message_count`: 冗余字段，避免频繁 COUNT 查询
 - `current_request_id`: 当前活跃请求 ID，用于取消操作
@@ -130,14 +130,6 @@ CREATE INDEX idx_messages_timestamp ON messages(timestamp);
 - `idle`: 空闲，可接受新请求
 - `busy`: 忙碌，正在处理请求
 - `error`: 错误状态，需要人工干预或自动恢复
-- `inactive`: 已失效状态，会话不再活跃但数据仍保留
-
-**inactive 状态说明：**
-- **不是删除操作**：`inactive` 是会话的一种正常状态，不等于软删除
-- **状态转换**：会话可能因长时间未活动、用户主动标记或系统策略而从 `idle` 转换为 `inactive`
-- **数据保留**：`inactive` 状态的会话数据完整保留，可随时恢复为 `idle`
-- **查询过滤**：默认情况下 `list_sessions()` 不返回 `inactive` 会话，除非显式指定
-- **恢复机制**：可通过 `update_session_status()` 将 `inactive` 会话恢复为 `idle`
 
 ## SQLiteStore 实现设计
 
@@ -294,7 +286,7 @@ async def update_session_status(
 
 **实现策略：**
 1. 构建动态 SQL（支持状态过滤）
-2. 默认过滤掉 `inactive` 状态的会话（除非显式指定）
+2. 支持状态过滤（可选）
 3. 使用 LIMIT 和 OFFSET 分页
 4. 执行 COUNT 查询获取总数
 5. 返回 (会话列表, 总数) 元组
@@ -422,7 +414,7 @@ PRAGMA synchronous = NORMAL;
 ```
 SessionManager.send_message()
     ├─ 获取会话锁
-    ├─ 检查状态是否为 idle/inactive/busy
+    ├─ 检查状态是否为 idle/error/busy
     ├─ 更新状态为 busy（数据库 UPDATE，带乐观锁）
     ├─ 保存用户消息
     ├─ 构建上下文
@@ -540,7 +532,6 @@ CREATE TABLE schema_version (
 ### 数据清理
 
 #### 过期会话清理
-- 定期扫描 inactive 状态会话
 - 删除超过保留期的会话和消息
 - 使用事务保证原子性
 

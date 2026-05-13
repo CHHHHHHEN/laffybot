@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, cast
 
-SessionStatus = Literal["idle", "busy", "error", "inactive"]
+SessionStatus = Literal["idle", "busy", "error"]
 MessageRole = Literal["user", "assistant", "system", "tool"]
 SessionMessage = dict[str, Any]
 
@@ -28,7 +28,7 @@ class SessionInfo:
 
 
 def validate_status(status: str) -> SessionStatus:
-    if status not in {"idle", "busy", "error", "inactive"}:
+    if status not in {"idle", "busy", "error"}:
         raise ValueError(f"Invalid session status: {status}")
     return cast(SessionStatus, status)
 

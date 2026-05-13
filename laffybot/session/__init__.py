@@ -3,7 +3,6 @@
 from laffybot.session.errors import (
     SessionBusyError,
     SessionError,
-    SessionInactiveError,
     SessionNotBusyError,
     SessionNotFoundError,
     SessionStateError,
@@ -21,7 +20,6 @@ __all__ = [
     "MessageRole",
     "SessionBusyError",
     "SessionError",
-    "SessionInactiveError",
     "SessionInfo",
     "SessionMessage",
     "SessionNotBusyError",

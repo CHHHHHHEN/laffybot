@@ -11,7 +11,6 @@ from typing import Any
 import aiosqlite
 
 from laffybot.session.errors import (
-    SessionInactiveError,
     SessionNotFoundError,
     SessionStateError,
 )
@@ -307,8 +306,6 @@ class SQLiteStore(SessionStore):
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
-        else:
-            clauses.append("status != 'inactive'")
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         count_sql = f"SELECT COUNT(*) AS total FROM sessions {where}"
         async with db.execute(count_sql, params) as cursor:
@@ -387,9 +384,8 @@ class SQLiteStore(SessionStore):
         async with db.execute(query, [*params, limit]) as cursor:
             rows = await cursor.fetchall()
         if not rows:
-            session = await self.get_session(session_id)
-            if session.session_id != session_id:
-                raise SessionInactiveError(session_id)
+            # Verify session exists
+            await self.get_session(session_id)
         return [self._row_to_message(row) for row in rows]
 
     async def get_message_count(self, session_id: str) -> int:

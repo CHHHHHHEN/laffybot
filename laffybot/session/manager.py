@@ -16,7 +16,6 @@ from laffybot.context import ContextBuilder, SimpleContextBuilder
 from laffybot.providers.base import BaseProvider
 from laffybot.session.errors import (
     SessionBusyError,
-    SessionInactiveError,
     SessionNotBusyError,
 )
 from laffybot.session.models import SessionInfo, SessionStatus
@@ -107,8 +106,6 @@ class SessionManager:
         lock = self._lock_for(session_id)
         async with lock:
             session = await self.store.get_session(session_id)
-            if session.status == "inactive":
-                raise SessionInactiveError(session_id)
             if session.status == "busy":
                 raise SessionBusyError(session_id, session.current_request_id)
 

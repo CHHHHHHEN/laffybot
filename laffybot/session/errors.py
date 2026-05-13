@@ -27,13 +27,6 @@ class SessionBusyError(SessionError):
         super().__init__(session_id, f"Session {session_id} is busy{suffix}")
 
 
-class SessionInactiveError(SessionError):
-    """Raised when a session is inactive."""
-
-    def __init__(self, session_id: str):
-        super().__init__(session_id, f"Session {session_id} is inactive")
-
-
 class SessionNotBusyError(SessionError):
     """Raised when a busy-only operation is invoked on an idle session."""
 

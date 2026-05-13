@@ -25,7 +25,6 @@ aiosqlite>=0.19.0
 | `idle` | 空闲，无正在进行的请求 | 发送消息、获取历史、删除 |
 | `busy` | 正在处理请求 | 取消请求、获取信息 |
 | `error` | 发生错误，需处理 | 获取历史、删除 |
-| `inactive` | 已失效，不再活跃 | 获取历史、删除 |
 
 ### 状态转换
 
@@ -33,12 +32,8 @@ aiosqlite>=0.19.0
 idle -> busy     (发送消息)
 busy -> idle     (请求完成)
 busy -> error    (发生错误)
-idle -> inactive (会话失效：长时间未活动、用户标记、系统策略)
-error -> inactive (会话失效)
-inactive -> idle (恢复会话)
+error -> idle    (重新发送消息)
 ```
-
-> **注意：** `inactive` 状态不是删除操作。删除会话（DELETE /api/v1/sessions/{session_id}）会从数据库中永久移除会话及其所有消息。`inactive` 状态表示会话已失效但数据仍保留，可随时恢复为 `idle` 状态。
 
 ## 并发控制
 
@@ -311,7 +306,7 @@ DELETE /api/v1/sessions/{session_id}
 }
 ```
 
-> **注意：** 删除操作会从数据库中永久移除会话及其所有消息，不是将状态设置为 `inactive`。
+> **注意：** 删除操作会从数据库中永久移除会话及其所有消息。
 
 ### 7. 列出所有会话
 
@@ -322,7 +317,7 @@ GET /api/v1/sessions
 **查询参数:**
 - `limit` (可选): 返回数量限制，默认 20
 - `offset` (可选): 分页偏移，默认 0
-- `status` (可选): 按状态过滤，可选值: `idle`, `busy`, `error`, `inactive`
+- `status` (可选): 按状态过滤，可选值: `idle`, `busy`, `error`
 
 **响应:**
 ```json
@@ -362,7 +357,6 @@ GET /api/v1/sessions
 |------------|--------|------|
 | 400 | INVALID_REQUEST | 请求参数无效 |
 | 404 | SESSION_NOT_FOUND | 会话不存在 |
-| 409 | SESSION_INACTIVE | 会话已失效 |
 | 409 | SESSION_BUSY | 会话正在处理请求 |
 | 409 | SESSION_NOT_BUSY | 会话当前无请求可取消 |
 | 500 | INTERNAL_ERROR | 内部服务器错误 |
