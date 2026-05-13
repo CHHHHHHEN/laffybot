@@ -178,10 +178,10 @@ export function ChatPage() {
   }, [sessionId])
 
   const handleCreateSession = useCallback(
-    async (model: string, systemPrompt: string, maxIterations: number) => {
+    async (systemPrompt: string, maxIterations: number) => {
       setDialogError(null)
       try {
-        const session = await createSession({ model, system_prompt: systemPrompt || undefined, max_iterations: maxIterations })
+        const session = await createSession({ system_prompt: systemPrompt || undefined, max_iterations: maxIterations })
         if (session) {
           setShowNewDialog(false)
           navigate(`/chat/${session.session_id}`)

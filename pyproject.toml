@@ -19,6 +19,7 @@ dependencies = [
     "json-repair",
     "aiosqlite",
     "jinja2",
+    "cryptography",
 ]
 
 [project.scripts]

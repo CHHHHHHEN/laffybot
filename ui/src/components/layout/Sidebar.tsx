@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUiStore } from '@/stores/ui-store'
 import { NavLinks } from './NavLinks'
+import { GlobalModelSelector } from './GlobalModelSelector'
 import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2 } from 'lucide-react'
 import { useSessionStore } from '@/stores/session-store'
 import { NewSessionDialog } from '@/components/ui/NewSessionDialog'
@@ -21,11 +22,10 @@ export function Sidebar() {
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
-  const handleCreateSession = async (model: string, systemPrompt: string, maxIterations: number) => {
+  const handleCreateSession = async (systemPrompt: string, maxIterations: number) => {
     setDialogError(null)
     try {
       const session = await createSession({
-        model,
         system_prompt: systemPrompt || undefined,
         max_iterations: maxIterations,
       })
@@ -88,6 +88,9 @@ export function Sidebar() {
 
           {/* Nav links */}
           <NavLinks />
+
+          {/* Global model selector */}
+          {sidebarOpen && <GlobalModelSelector />}
 
           {/* New chat button */}
           <div className="px-3 mb-2">

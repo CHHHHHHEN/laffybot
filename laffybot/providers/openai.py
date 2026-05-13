@@ -18,8 +18,8 @@ import json_repair
 from loguru import logger
 from openai import AsyncOpenAI
 
-from laffybot.config import ProviderConfig
 from laffybot.providers.base import BaseProvider
+from laffybot.providers.config import ProviderConfig
 from laffybot.providers.types import (
     ERROR_CONNECTION,
     ERROR_RATE_LIMIT,

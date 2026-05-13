@@ -27,6 +27,16 @@
 | `DELETE /api/v1/sessions/{id}` | 用户确认删除 | `ConfirmDialog` 确认 → `session-store` 移除 |
 | `GET /api/v1/sessions/{id}/history` | 会话切换 / 上滚加载更多 | `chat-store` 加载历史消息 |
 | `GET /api/v1/health` | 应用启动 / 降级检测 | `ConnectionStatusBanner` |
+| `GET /api/v1/providers` | 应用启动 / 设置页面加载 | `providerStore` 拉取全量列表 |
+| `POST /api/v1/providers` | 用户提交添加提供商表单 | `ProviderForm` 确认 → `providerStore` 追加 |
+| `PUT /api/v1/providers/{id}` | 用户提交编辑提供商表单 | `ProviderForm` 确认 → `providerStore` 更新 |
+| `DELETE /api/v1/providers/{id}` | 用户确认删除提供商 | 确认对话框 → `providerStore` 移除 |
+| `GET /api/v1/providers/{id}/models` | 提供商卡片展开 / 首次渲染 | `providerStore` 加载模型列表 |
+| `POST /api/v1/providers/{id}/models` | 用户添加模型 | `ModelList` 提交 → `providerStore` 追加 |
+| `DELETE /api/v1/providers/{id}/models/{mid}` | 用户点击模型删除按钮 | `ModelList` 移除 → `providerStore` 删除 |
+| `POST /api/v1/providers/{id}/test` | 用户点击测试连接按钮 | 显示成功/失败 Toast |
+| `GET /api/v1/providers/active` | 应用启动 / 导航切换 | `providerStore` 设置全局选中 |
+| `PUT /api/v1/providers/active` | 用户点击 GlobalModelSelector 应用按钮 | `providerStore` 更新选中 → 即刻生效 |
 
 ### 分页约定
 
@@ -85,9 +95,14 @@ UI 层按以下策略处理：
 | HTTP 状态码 | UI 处理 |
 |-------------|---------|
 | 400 | `InputBar` 内联错误提示（参数无效） |
-| 404 | 轻提示 + 导航回 `/chat`（会话已被删除） |
+| 400 NO_ACTIVE_PROVIDER | `NewSessionDialog` 展示「请先选择提供商和模型」提示 |
+| 404 SESSION_NOT_FOUND | 轻提示 + 导航回 `/chat`（会话已被删除） |
+| 404 PROVIDER_NOT_FOUND | Toast 提示 + 刷新提供商列表 |
 | 409 SESSION_BUSY | `InputBar` 禁用态 + 提示「当前会话正在处理中」 |
+| 409 MODEL_NAME_CONFLICT | Toast 提示「模型名已存在」 |
 | 500 / 网络超时 | `ConnectionStatusBanner` 或消息内联重试按钮 |
+| 500 PROVIDER_CONFIG_ERROR | Toast 提示「提供商配置错误」 |
+| 502 PROVIDER_CONNECTION_ERROR | Toast 提示「连接失败」 |
 
 SSE 连接基于 `fetch` + `ReadableStream` 实现（非 `EventSource`），支持 `AbortController` 取消。
 断线后续传：UI 保留已接收内容，提供重新发送入口，不自动重连。

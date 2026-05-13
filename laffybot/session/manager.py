@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from laffybot.agent.cancellation import CancellationToken, CancelledError
@@ -13,12 +13,14 @@ from laffybot.agent.runner import AgentRunner, AgentRunSpec
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
 from laffybot.context import ContextBuilder, SimpleContextBuilder
-from laffybot.providers.base import BaseProvider
+from laffybot.providers.errors import NoActiveProviderError
+from laffybot.providers.openai import OpenAIProvider
 from laffybot.session.errors import (
     SessionBusyError,
     SessionNotBusyError,
 )
 from laffybot.session.models import SessionInfo, SessionStatus
+from laffybot.session.provider_store import ProviderStore
 from laffybot.session.store import SessionStore
 
 
@@ -28,18 +30,17 @@ class SessionManager:
     def __init__(
         self,
         store: SessionStore,
+        provider_store: ProviderStore,
         tool_registry: ToolRegistry,
-        provider_factory: Callable[[str], BaseProvider],
         context_config: ContextConfig | None = None,
         context_builder: ContextBuilder | None = None,
     ) -> None:
         self.store = store
+        self.provider_store = provider_store
         self.tool_registry = tool_registry
-        self.provider_factory = provider_factory
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
 
-        # Initialize context builder
         if context_builder is not None:
             self._context_builder = context_builder
         else:
@@ -59,14 +60,16 @@ class SessionManager:
 
     async def create_session(
         self,
-        model: str,
         system_prompt: str | None = None,
         max_iterations: int = 10,
     ) -> SessionInfo:
+        selection = await self.provider_store.get_active_selection()
+        if selection is None:
+            raise NoActiveProviderError()
         session_id = str(uuid.uuid4())
         return await self.store.create_session(
             session_id=session_id,
-            model=model,
+            model=selection.model_name,
             system_prompt=system_prompt,
             max_iterations=max_iterations,
         )
@@ -116,6 +119,12 @@ class SessionManager:
             if session.status == "busy":
                 raise SessionBusyError(session_id, session.current_request_id)
 
+            # Resolve active provider selection for this message send
+            selection = await self.provider_store.get_active_selection()
+            if selection is None:
+                raise NoActiveProviderError()
+            provider_config = await self.provider_store.get_provider_config(selection.provider_id)
+
             request_id = self._request_id()
             token = CancellationToken()
             self._active_tokens[session_id] = token
@@ -132,17 +141,16 @@ class SessionManager:
                 )
                 await self.store.save_message(session_id, "user", content)
 
-                messages = await self._build_messages(session, content)
-                provider = self.provider_factory(session.model)
+                messages = await self._build_messages(session, content, selection.model_name)
+                provider = OpenAIProvider(provider_config)
                 runner = AgentRunner(provider)
                 spec = AgentRunSpec(
                     initial_messages=messages,
                     tools=self.tool_registry,
-                    model=session.model,
+                    model=selection.model_name,
                     max_iterations=session.max_iterations,
                 )
 
-                # Track usage for token persistence
                 accumulated_usage: dict[str, int] = {}
 
                 async for event in runner.run_stream(
@@ -165,11 +173,9 @@ class SessionManager:
                             response_status = "error"
                         else:
                             response_status = "idle"
-                        # Extract usage from done event
                         if event.usage:
                             accumulated_usage = event.usage
                         if response_status == "idle" and assistant_chunks:
-                            # Extract token counts from usage
                             input_tokens = accumulated_usage.get("prompt_tokens")
                             output_tokens = accumulated_usage.get("completion_tokens")
                             await self.store.save_message(
@@ -220,21 +226,15 @@ class SessionManager:
         self,
         session: SessionInfo,
         current_message: str,
+        model: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Build complete message context using ContextBuilder.
-
-        Delegates to ContextBuilder for:
-        - System prompt assembly
-        - History loading
-        - Capacity control
-        """
         history = await self.store.get_messages(session.session_id)
         return await self._context_builder.build_messages(
             session_id=session.session_id,
             system_prompt=session.system_prompt,
             history=history,
             current_message=current_message,
-            model=session.model,
+            model=model or session.model,
             created_at=session.created_at,
         )
 

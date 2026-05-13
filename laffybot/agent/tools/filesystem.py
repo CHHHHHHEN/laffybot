@@ -7,9 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from laffybot.agent.tools.base import Tool, tool_parameters
-from laffybot.agent.tools.schema import BooleanSchema, IntegerSchema, StringSchema, tool_parameters_schema
 from laffybot.agent.tools.file_state import FileStates, _hash_file, current_file_states
-
+from laffybot.agent.tools.schema import (
+    BooleanSchema,
+    IntegerSchema,
+    StringSchema,
+    tool_parameters_schema,
+)
 
 _FS_WORKSPACE_BOUNDARY_NOTE = (
     " (this is a hard policy boundary, not a transient failure; "

@@ -1,22 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { X, Settings } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useProviderStore } from '@/stores/provider-store'
 
 interface NewSessionDialogProps {
   isOpen: boolean
-  onSubmit: (model: string, systemPrompt: string, maxIterations: number) => void
+  onSubmit: (systemPrompt: string, maxIterations: number) => void
   onCancel: () => void
   error?: string | null
 }
 
 export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessionDialogProps) {
-  const [model, setModel] = useState('')
+  const navigate = useNavigate()
+  const activeSelection = useProviderStore((s) => s.activeSelection)
   const [systemPrompt, setSystemPrompt] = useState('')
   const [maxIterations, setMaxIterations] = useState(10)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (isOpen) {
-      setModel('')
       setSystemPrompt('')
       setMaxIterations(10)
       setTimeout(() => inputRef.current?.focus(), 0)
@@ -34,11 +36,12 @@ export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessi
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!model.trim()) return
-    onSubmit(model.trim(), systemPrompt.trim(), maxIterations)
+    onSubmit(systemPrompt.trim(), maxIterations)
   }
 
   if (!isOpen) return null
+
+  const hasActive = activeSelection !== null
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center">
@@ -62,20 +65,30 @@ export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessi
         </h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Current model selection (read-only) */}
           <div>
-            <label htmlFor="model-input" className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
-              模型
+            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
+              当前模型
             </label>
-            <input
-              ref={inputRef}
-              id="model-input"
-              type="text"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="例如: deepseek-ai/DeepSeek-V3"
-              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none focus:border-[var(--color-brand)] transition-colors duration-150"
-              required
-            />
+            {hasActive ? (
+              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-secondary-bg)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+                {activeSelection.provider_name} / {activeSelection.model_name}
+              </div>
+            ) : (
+              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-secondary-bg)] px-3 py-2">
+                <p className="text-sm text-[var(--color-text-placeholder)] mb-2">
+                  请先选择提供商和模型
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { onCancel(); navigate('/settings/provider') }}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--color-brand)] hover:text-[var(--color-brand-hover)] transition-colors duration-150"
+                >
+                  <Settings size={12} />
+                  前往设置配置提供商
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
@@ -83,6 +96,7 @@ export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessi
               System Prompt <span className="text-[var(--color-text-placeholder)]">(可选)</span>
             </label>
             <textarea
+              ref={inputRef}
               id="system-prompt"
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
@@ -121,7 +135,7 @@ export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessi
             </button>
             <button
               type="submit"
-              disabled={!model.trim()}
+              disabled={!hasActive}
               className="px-4 py-2 text-sm rounded-md bg-[var(--color-brand)] text-white font-medium hover:bg-[var(--color-brand-hover)] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               创建

@@ -36,11 +36,15 @@
 │  Sidebar                     │  Main Panel       │
 │  ┌─────────────────┐         │  ┌──────────────┐ │
 │  │  Logo / Brand    │         │  │              │ │
-│  │  New Chat 按钮   │         │  │   Outlet     │ │
-│  │  ─────────────── │         │  │   (子路由)   │ │
-│  │  导航链接        │         │  │              │ │
+│  │  ─────────────── │         │  │   Outlet     │ │
+│  │  导航链接        │         │  │   (子路由)   │ │
 │  │  · 聊天          │         │  │              │ │
 │  │  · 设置          │         │  │              │ │
+│  │  ─────────────── │         │  │              │ │
+│  │  全局模型选择器   │         │  │              │ │
+│  │  [提供商 ▼] [模型 ▼]      │  │              │ │
+│  │  ─────────────── │         │  │              │ │
+│  │  New Chat 按钮   │         │  │              │ │
 │  │  ─────────────── │         │  │              │ │
 │  │  会话列表        │         │  │              │ │
 │  │  ┌─────────────┐ │         │  │              │ │
@@ -48,6 +52,7 @@
 │  │  │ SessionItem │ │         │  │              │ │
 │  │  │ SessionItem │ │         │  │              │ │
 │  │  └─────────────┘ │         │  │              │ │
+│  │                  │         │  │              │ │
 │  └─────────────────┘         │  └──────────────┘ │
 └──────────────────────────────────────────────────┘
 ```
@@ -146,9 +151,10 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 
 | 组件 | 职责 | 输入 | 输出 |
 |------|------|------|------|
-| `AppShell` | 整体布局骨架，管理 Sidebar + Main Panel；集成 ErrorBoundary、ToastContainer | 无 | 无 |
-| `Sidebar` | 导航 + 会话列表（内联，无独立 SessionList/SessionItem） | sessions, activeSessionId, isLoading | 内部 handleCreateSession, handleDelete |
-| `NewSessionDialog` | 创建会话的表单对话框 | isOpen, error | onSubmit(model, systemPrompt, maxIterations), onCancel |
+| `AppShell` | 整体布局骨架，管理 Sidebar + Main Panel；挂载时初始化 session-store 和 provider-store | 无 | 无 |
+| `Sidebar` | 导航 + 全局模型选择器 + 会话列表（内联） | sessions, activeSessionId, isLoading | 内部 handleCreateSession, handleDelete |
+| `GlobalModelSelector` | 全局提供商/模型选择器，级联下拉，切换即时生效 | providers, models, activeSelection（均来自 provider-store） | 无 |
+| `NewSessionDialog` | 创建会话的表单对话框；只读展示当前全局选中；无选中时展示跳转设置链接 | isOpen, error | onSubmit(systemPrompt, maxIterations), onCancel |
 | `ChatHeader` | 当前会话信息标题栏 | session, status | onBack（导航到 /chat） |
 | `MessageList` | 消息容器，管理滚动 + 自动跟随 | messages[], isStreaming, isLoading, error, onRetry | 无 |
 | `MessageBubble` | 单条消息渲染（用户/助手分左右对齐） | message | 无 |
@@ -157,7 +163,9 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 | `ToolCallCard` | 工具调用进行中卡片（可展开参数） | toolCall (id, name, arguments, status) | 无 |
 | `ToolResultBlock` | 工具执行结果卡片 | toolCall (含 result, success, duration_ms) | 无 |
 | `InputBar` | 输入与发送/取消（自动增长高度） | isStreaming, disabled | onSubmit, onCancel |
-| `ProviderSettingsPage` | 提供商配置展示页面（mock 数据，只读） | 无（内部 mock） | 无 |
+| `ProviderSettingsPage` | 提供商配置管理页面（增删改），对接真实 API | providers, models（来自 provider-store） | 无 |
+| `ProviderForm` | 提供商添加/编辑表单弹窗 | isOpen, initialData?, title | onSave(data), onCancel |
+| `ModelList` | 管理指定提供商下的模型列表（添加/删除） | providerId, models[] | 无 |
 | `ToolSettingsPage` | 工具管理页面（本地 toggle 状态） | 无（内部 mock） | 无 |
 | `ScrollToBottomButton` | "回到最新"浮动按钮 | visible, onClick | 无 |
 | `ConnectionStatusBanner` | 连接状态提示横幅 | status (disconnected/connecting/connected/error) | 无 |
@@ -318,13 +326,14 @@ DELETE /sessions/{id}
 | 项目 | 设计文档 | 实际实现 |
 |------|----------|----------|
 | SessionList / SessionItem | 独立组件 | 内联在 Sidebar.tsx 中，无独立文件 |
-| NewSessionDialog 模型建议 | 展示最近使用过的模型列表 | 仅自由文本输入，无建议列表 |
+| NewSessionDialog 模型选择 | 下拉选择提供商和模型 | 移除了模型输入，改为只读展示全局选中 |
 | ChatHeader [...] 菜单 | 右侧有更多操作菜单 | 仅含返回按钮、模型名、状态标签 |
 | ConnectionStatusBanner | status 含 `reconnecting` 状态 | 只有 disconnected/connecting/connected/error |
 | 流式渲染机制 | 描述为直接逐 token 追加渲染 | 实际使用 streamBuffer 累积 + flushStreamBuffer 转换 |
 | Keyboard shortcuts | Ctrl+N 新建会话、方向键导航等 | 仅实现 Ctrl+B 切换 Sidebar |
 | ErrorBoundary | 未在组件表中列出 | 已在 AppShell 中集成 |
-| ProviderSettings / ToolSettings | 独立组件 | 页面级文件（ProviderSettingsPage / ToolSettingsPage），使用 mock 数据 |
+| ProviderSettings | 独立组件 | 页面级文件，已对接真实 API，支持完整 CRUD |
+| ToolSettings | 独立组件 | 页面级文件，仍使用 mock 数据（后端未实现） |
 | 主题切换 | 跟随系统 + 手动覆盖 | ui-store 中有 theme 状态，但 `.dark` CSS class 切换逻辑未接入 |
 | openapi-typescript | 计划使用 | 未使用，API 类型直接在 api.ts 手写 |
 
@@ -336,6 +345,7 @@ DELETE /sessions/{id}
 |-------|------|----------|
 | `session-store` | 会话列表 CRUD、当前活跃会话 | sessions[], activeSessionId, isLoading, error |
 | `chat-store` | 当前会话的消息流、SSE 连接、流式追加 | messages[], connectionStatus (disconnected/connecting/connected/error), streamBuffer, activeRequestId |
+| `provider-store` | 提供商管理 CRUD、模型管理、全局选中 | providers[], models{}, activeSelection, isLoading |
 | `ui-store` | UI 偏好 | sidebarOpen, theme |
 
 ### Session Store 状态转换

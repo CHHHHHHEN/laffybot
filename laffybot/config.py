@@ -6,23 +6,12 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 
-class ProviderConfig(BaseSettings):
-    """LLM provider configuration."""
-
-    api_key: str
-    base_url: str
-    extra_headers: dict[str, str] = Field(default_factory=dict)
-    extra_body: dict[str, Any] = Field(default_factory=dict)
-
-
 class ContextConfig(BaseModel):
     """Context building configuration.
 
     Controls how messages are assembled and context window limits.
-    This is separate from ProviderConfig to avoid mixing concerns.
     """
 
-    # Capacity limits
     max_tokens: int | None = Field(
         default=None,
         description="Maximum total tokens for context (system + history + current). None means no limit.",
@@ -37,7 +26,6 @@ class ContextConfig(BaseModel):
         description="Minimum number of user-assistant message pairs to preserve when truncating.",
     )
 
-    # System prompt configuration
     system_prompt: str | None = Field(
         default=None,
         description="Default system prompt. Can be overridden by session.",
@@ -50,8 +38,6 @@ class ContextConfig(BaseModel):
         default_factory=dict,
         description="Custom variables for system prompt template.",
     )
-
-    # Token counting
     use_exact_token_count: bool = Field(
         default=True,
         description="Prefer exact token counts from LLM usage when available.",

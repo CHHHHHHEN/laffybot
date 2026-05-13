@@ -19,7 +19,6 @@ class ErrorResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
-    model: str
     system_prompt: str | None = None
     max_iterations: int = Field(default=10, ge=1)
 
@@ -93,3 +92,57 @@ class HealthResponse(BaseModel):
 class ReadyResponse(BaseModel):
     status: str
     checks: dict[str, str]
+
+
+class ProviderCreateRequest(BaseModel):
+    name: str
+    base_url: str
+    api_key: str
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+
+
+class ProviderUpdateRequest(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    extra_headers: dict[str, str] | None = None
+
+
+class ProviderResponse(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    has_api_key: bool
+    created_at: datetime
+
+
+class ProviderDetailResponse(ProviderResponse):
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+
+
+class ModelCreateRequest(BaseModel):
+    name: str
+
+
+class ModelResponse(BaseModel):
+    id: str
+    provider_id: str
+    name: str
+
+
+class ActiveSelectionResponse(BaseModel):
+    provider_id: str
+    model_id: str
+    provider_name: str
+    model_name: str
+
+
+class ActiveSelectionUpdateRequest(BaseModel):
+    provider_id: str
+    model_id: str
+
+
+class TestResultResponse(BaseModel):
+    success: bool
+    message: str
+    latency_ms: int | None = None

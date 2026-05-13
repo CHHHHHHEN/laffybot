@@ -298,6 +298,7 @@ idle ──(发送消息)──→ busy ──(完成)──→ idle
 |-------|----------|------|
 | `chat-store` | messages[], isStreaming, streamBuffer, connectionStatus, activeRequestId | 消息流 + SSE 事件处理 + 流缓冲区 |
 | `session-store` | sessions[], activeSessionId, isLoading, error | 会话列表 CRUD + 分页加载 |
+| `provider-store` | providers[], models{}, activeSelection, isLoading | 提供商/模型 CRUD + 全局选中管理 |
 | `ui-store` | sidebarOpen, theme | 侧边栏折叠 + 主题切换 |
 
 ### 4.3 流式渲染机制
@@ -313,7 +314,7 @@ SSE 流使用两层缓冲区机制：
 /chat                         → 重定向到 /chat
 /chat/:sessionId              → 指定会话聊天
 /settings                     → 重定向到 /settings/provider
-/settings/provider            → 提供商配置（mock 数据）
+/settings/provider            → 提供商配置（CRUD，对接真实 API）
 /settings/tools               → 工具管理（本地 toggle）
 ```
 
@@ -325,7 +326,8 @@ AppShell
 ├── ToastContainer
 ├── Sidebar
 │   ├── NavLinks (聊天 / 设置)
-│   ├── NewSessionDialog
+│   ├── GlobalModelSelector
+│   ├── NewSessionDialog (只读展示全局选中)
 │   ├── ConfirmDialog
 │   └── 会话列表（内联）
 └── Outlet
@@ -339,7 +341,9 @@ AppShell
     │   ├── InputBar
     │   └── ScrollToBottomButton
     └── SettingsPage
-        ├── ProviderSettingsPage（mock）
+        ├── ProviderSettingsPage（对接真实 API）
+        │   ├── ProviderForm
+        │   └── ModelList
         └── ToolSettingsPage（toggle）
 ```
 
@@ -352,8 +356,9 @@ AppShell
 1. **单实例部署**: 不考虑水平扩展，SQLite 足够
 2. **SessionManager 单例 + AgentRunner 按需创建**: 会话协调全局共享，执行器轻量按请求创建
 3. **ContextBuilder 依赖注入**: 支持不同的上下文构建策略
-4. **Provider 工厂模式**: 按模型动态创建 Provider 实例
-5. **乐观锁 + asyncio.Lock 双重保护**: 应用层锁 + 数据库乐观锁
+4. **ProviderStore 运行时配置**: 提供商配置存储在数据库，API Key 加密保存，运行时实时读取和解密
+5. **会话与提供商解耦**: model 字段作为创建快照，运行时模型由全局选中决定
+6. **乐观锁 + asyncio.Lock 双重保护**: 应用层锁 + 数据库乐观锁
 
 ### 5.2 功能方面
 
@@ -361,7 +366,8 @@ AppShell
 2. **工具参数校验**: 使用 JSON Schema 片段 + `@tool_parameters` 装饰器
 3. **工具 ID 规范化**: 统一为 9 字符 alphanumeric（SHA1 截断或随机生成）
 4. **POST-based SSE**: 不使用 `EventSource`，而是 `fetch` + `ReadableStream`，支持 `AbortController` 取消
-5. **OpenAI 兼容**: 支持 OpenAI / DeepSeek / OpenRouter / 本地模型
+5. **多提供商管理**: 通过 UI 配置多个 LLM 提供商及模型，API Key 加密存储
+6. **OpenAI 兼容**: 支持 OpenAI / DeepSeek / OpenRouter / 本地模型
 
 ### 5.3 前端方面
 
@@ -379,9 +385,8 @@ AppShell
 2. ⚠️ 心跳 `HeartbeatManager` 已实现但未接入 SSE 主流程
 3. ⚠️ 暗色模式 `.dark` CSS class 切换未接入
 4. ⚠️ 前端未实现响应式 tablet/mobile 断点区分
-5. ⚠️ 提供商/工具设置页面使用 mock 数据，无管理 API
+5. ⚠️ 工具管理页面仍使用 mock 数据，后端工具 toggle API 未实现
 6. ⚠️ 前端 `types/` 目录未使用（空）——类型定义在 `lib/api.ts` 中
-7. ⚠️ 前端 `settings/` 组件目录为空
 
 ---
 

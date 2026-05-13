@@ -22,6 +22,8 @@
 | 并发控制 (asyncio.Lock) | ✅ 已实现 | `laffybot/session/manager.py` → `_locks` |
 | Token 元数据持久化 | ✅ 已实现 | `laffybot/session/store.py` → `save_message` |
 | 异常定义 | ✅ 已实现 | `laffybot/session/errors.py` |
+| ProviderStore 接口 | ✅ 已实现 | `laffybot/session/provider_store.py` |
+| SQLiteProviderStore 实现 | ✅ 已实现 | `laffybot/session/provider_store.py:SQLiteProviderStore` |
 
 ## 概述
 
@@ -32,29 +34,38 @@ SessionManager 是 Laffybot API 的核心组件，负责管理会话生命周期
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   FastAPI Routes                    │
-└────────────────────┬────────────────────────────────┘
-                     │
-                     v
-         ┌───────────────────────┐
-         │   SessionManager      │  ← 本文档核心（单例）
-         │  ┌─────────────────┐  │
-         │  │ SessionStore    │  │  存储层：持久化
-         │  └─────────────────┘  │
-         │  ┌─────────────────┐  │
-         │  │ ContextBuilder  │  │  构建层：上下文组装
-         │  └─────────────────┘  │  （参见 context-builder-design.md）
-         └───────────┬───────────┘
-                     │
-                     v
-         ┌───────────────────────┐
-         │    AgentRunner        │  ← 单例（所有会话共享）
-         └───────────────────────┘
+└──────┬──────────────────────────────────┬───────────┘
+       │                                  │
+       v                                  v
+┌──────────────────┐          ┌──────────────────────┐
+│  SessionStore     │          │  ProviderStore       │
+│  (会话 & 消息)     │          │  (提供商 & 模型 &     │
+│                   │          │   活跃选中)           │
+└─────────┬─────────┘          └──────────┬───────────┘
+          │                               │
+          v                               v
+┌─────────────────────────────────────────────────────┐
+│                  SessionManager                      │  ← 本文档核心（单例）
+│  ┌─────────────────┐  ┌──────────────────────────┐  │
+│  │ SessionStore    │  │ ProviderStore            │  │
+│  │ 注入: 持久化     │  │ 注入: 配置读取+解密      │  │
+│  └─────────────────┘  └──────────────────────────┘  │
+│  ┌─────────────────┐                                │
+│  │ ContextBuilder  │  构建层：上下文组装             │
+│  └─────────────────┘  （参见 context-builder-design.md）│
+└───────────────────────┬─────────────────────────────┘
+                        │
+                        v
+┌─────────────────────────────────────────────────────┐
+│                  AgentRunner                         │  ← 按请求创建
+└─────────────────────────────────────────────────────┘
 ```
 
 **设计决策：**
 - **SessionManager 单例**：整个应用只有一个 SessionManager 实例，管理所有会话 ✅
-- **AgentRunner 按需创建**：每次请求创建新的 AgentRunner 实例，Provider 由工厂函数创建 ✅
+- **AgentRunner 按需创建**：每次请求创建新的 AgentRunner 实例，Provider 运行时从 ProviderStore 获取配置后直接实例化 ✅
 - **SessionStore 依赖注入**：SessionStore 作为依赖注入，支持不同存储后端 ✅
+- **ProviderStore 依赖注入**：ProviderStore 作为依赖注入，管理提供商配置读取、解密和活跃选中 ✅
 - **ContextBuilder 集成**：SessionManager 通过依赖注入使用 ContextBuilder 组件 ✅（已实现，参见 `context-builder-design.md`）
 
 ## 核心职责
@@ -272,16 +283,16 @@ async def get_message_count(self, session_id: str) -> int
 def __init__(
     self,
     store: SessionStore,
+    provider_store: ProviderStore,
     tool_registry: ToolRegistry,
-    provider_factory: Callable[[str], BaseProvider],
     context_config: ContextConfig | None = None,
     context_builder: ContextBuilder | None = None,
 ) -> None
 ```
 
-**参数：** `store` - 会话持久化存储；`tool_registry` - 工具注册表；`provider_factory` - LLM 提供者工厂函数；`context_config` - 上下文构建配置（可选）；`context_builder` - ContextBuilder 实例（可选，支持依赖注入）
+**参数：** `store` - 会话持久化存储；`provider_store` - 提供商配置存储；`tool_registry` - 工具注册表；`context_config` - 上下文构建配置（可选）；`context_builder` - ContextBuilder 实例（可选，支持依赖注入）
 
-> **注意：** ContextBuilder 已实现，SessionManager 支持通过依赖注入使用自定义 ContextBuilder 实现。
+> 移除了 `provider_factory` 参数。Provider 不再由外部工厂函数创建，改由 SessionManager 运行时从 ProviderStore 获取配置后直接实例化。
 
 #### create_session
 创建新会话。
@@ -290,17 +301,18 @@ def __init__(
 ```python
 async def create_session(
     self,
-    model: str,
     system_prompt: str | None = None,
     max_iterations: int = 10,
 ) -> SessionInfo
 ```
 
-**参数：** `model` - LLM 模型标识符；`system_prompt` - 可选的系统提示词；`max_iterations` - Agent 最大迭代次数
+**参数：** `system_prompt` - 可选的系统提示词；`max_iterations` - Agent 最大迭代次数
 
 **返回：** SessionInfo 实例
 
-**异常：** `ValidationError` - 模型无效；`DatabaseError` - 创建失败
+**异常：** `NoActiveProviderError` - 未设置全局选中；`DatabaseError` - 创建失败
+
+> 移除了 `model` 参数。模型名称由 SessionManager 内部从 ProviderStore.get_active_selection() 解析，作为快照写入 session。
 
 #### get_session_info
 获取会话信息。
@@ -447,8 +459,11 @@ SessionManager 与 AgentRunner 采用**协调器-执行器**模式：
 ```
 SessionManager.send_message()
     ├─ 状态检查 → 更新状态为 busy
+    ├─ ProviderStore.get_active_selection()  → 获取全局选中
+    ├─ ProviderStore.get_provider_config()   → 获取解密配置
     ├─ 创建 CancellationToken
-    ├─ 构造 AgentRunSpec（消息历史 + 配置）
+    ├─ 构造 AgentRunSpec（消息历史 + 配置，model=全局选中.model_name）
+    ├─ OpenAIProvider(config) → AgentRunner
     ├─ 调用 AgentRunner.run_stream()
     ├─ 转发 SSE 事件流
     └─ 完成后更新状态为 idle/error
@@ -456,11 +471,11 @@ SessionManager.send_message()
 
 ### AgentRunner 实例管理
 
-每次请求创建新的 AgentRunner 实例，Provider 由工厂函数根据模型动态创建。AgentRunner 内部状态无共享，支持并发调用。
+每次请求创建新的 AgentRunner 实例，Provider 由 SessionManager 运行时从 ProviderStore 获取解密配置后直接实例化。AgentRunner 内部状态无共享，支持并发调用。
 
 **设计理由**：
-- **模型灵活性**：不同会话可能使用不同模型，需要不同的 Provider 实例
-- **简化实现**：无需管理 AgentRunner 实例池和生命周期
+- **配置来源透明**：ProviderStore 封装配置查找和 API Key 解密，AgentRunner 和 ProviderFactory 无需感知
+- **运行时即时生效**：每次发送消息时重新读取全局选中和提供配置，切换提供商或模型即时生效
 - **资源开销可控**：AgentRunner 本身轻量，主要资源在 Provider 连接层
 
 ### 消息格式转换

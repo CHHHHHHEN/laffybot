@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Callable
 
-from laffybot.config import ProviderConfig
+from laffybot.providers.config import ProviderConfig
 from laffybot.providers.types import LLMResponse, StreamChunk
 
 

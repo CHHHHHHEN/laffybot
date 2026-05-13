@@ -36,7 +36,6 @@ export class ApiError extends Error {
 /* ---- Session APIs ---- */
 
 export interface CreateSessionRequest {
-  model: string
   system_prompt?: string
   max_iterations?: number
 }
@@ -180,6 +179,121 @@ export async function connectSseStream(
       }
     }
   }
+}
+
+/* ---- Provider APIs ---- */
+
+export interface ProviderResponse {
+  id: string
+  name: string
+  base_url: string
+  has_api_key: boolean
+  created_at: string
+}
+
+export interface ProviderDetailResponse extends ProviderResponse {
+  extra_headers: Record<string, string>
+}
+
+export interface ProviderCreateRequest {
+  name: string
+  base_url: string
+  api_key: string
+  extra_headers?: Record<string, string>
+}
+
+export interface ProviderUpdateRequest {
+  name?: string
+  base_url?: string
+  api_key?: string
+  extra_headers?: Record<string, string>
+}
+
+export interface ModelResponse {
+  id: string
+  provider_id: string
+  name: string
+}
+
+export interface ActiveSelectionResponse {
+  provider_id: string
+  model_id: string
+  provider_name: string
+  model_name: string
+}
+
+export interface ActiveSelectionUpdateRequest {
+  provider_id: string
+  model_id: string
+}
+
+export interface TestResultResponse {
+  success: boolean
+  message: string
+  latency_ms: number | null
+}
+
+export function listProviders() {
+  return apiRequest<ProviderResponse[]>('/api/v1/providers')
+}
+
+export function createProvider(data: ProviderCreateRequest) {
+  return apiRequest<ProviderResponse>('/api/v1/providers', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function getProvider(id: string) {
+  return apiRequest<ProviderDetailResponse>(`/api/v1/providers/${id}`)
+}
+
+export function updateProvider(id: string, data: ProviderUpdateRequest) {
+  return apiRequest<ProviderResponse>(`/api/v1/providers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteProvider(id: string) {
+  return apiRequest<{ status: string; provider_id: string; active_cleared?: boolean }>(
+    `/api/v1/providers/${id}`,
+    { method: 'DELETE' }
+  )
+}
+
+export function listModels(providerId: string) {
+  return apiRequest<ModelResponse[]>(`/api/v1/providers/${providerId}/models`)
+}
+
+export function addModel(providerId: string, data: { name: string }) {
+  return apiRequest<ModelResponse>(`/api/v1/providers/${providerId}/models`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteModel(providerId: string, modelId: string) {
+  return apiRequest<{ status: string; model_id: string }>(`/api/v1/providers/${providerId}/models/${modelId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function getActiveSelection() {
+  return apiRequest<ActiveSelectionResponse | null>('/api/v1/providers/active')
+}
+
+export function setActiveSelection(data: ActiveSelectionUpdateRequest) {
+  return apiRequest<ActiveSelectionResponse>('/api/v1/providers/active', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function testProvider(id: string) {
+  return apiRequest<TestResultResponse>(`/api/v1/providers/${id}/test`, {
+    method: 'POST',
+  })
 }
 
 /* ---- Health API ---- */

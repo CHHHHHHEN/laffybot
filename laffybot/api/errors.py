@@ -7,6 +7,14 @@ from typing import Any
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
 
+from laffybot.providers.errors import (
+    ModelNameConflictError,
+    ModelNotFoundError,
+    NoActiveProviderError,
+    ProviderConfigError,
+    ProviderConnectionError,
+    ProviderNotFoundError,
+)
 from laffybot.session.errors import (
     SessionBusyError,
     SessionError,
@@ -69,3 +77,19 @@ def map_session_error(exc: SessionError) -> JSONResponse:
         "INTERNAL_ERROR",
         str(exc),
     )
+
+
+def map_provider_error(exc: ProviderNotFoundError | ProviderConnectionError | ProviderConfigError | NoActiveProviderError | ModelNotFoundError | ModelNameConflictError) -> JSONResponse:
+    if isinstance(exc, ProviderNotFoundError):
+        return error_response(http_status.HTTP_404_NOT_FOUND, "PROVIDER_NOT_FOUND", str(exc))
+    if isinstance(exc, ProviderConfigError):
+        return error_response(http_status.HTTP_500_INTERNAL_SERVER_ERROR, "PROVIDER_CONFIG_ERROR", str(exc))
+    if isinstance(exc, ProviderConnectionError):
+        return error_response(http_status.HTTP_502_BAD_GATEWAY, "PROVIDER_CONNECTION_ERROR", str(exc))
+    if isinstance(exc, NoActiveProviderError):
+        return error_response(http_status.HTTP_400_BAD_REQUEST, "NO_ACTIVE_PROVIDER", str(exc))
+    if isinstance(exc, ModelNotFoundError):
+        return error_response(http_status.HTTP_404_NOT_FOUND, "MODEL_NOT_FOUND", str(exc))
+    if isinstance(exc, ModelNameConflictError):
+        return error_response(http_status.HTTP_409_CONFLICT, "MODEL_NAME_CONFLICT", str(exc))
+    return error_response(http_status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", str(exc))
