@@ -1,0 +1,3 @@
+[submodule "third-party/agentmemory"]
+	path = third-party/agentmemory
+	url = https://github.com/rohitg00/agentmemory
