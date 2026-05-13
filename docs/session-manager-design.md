@@ -8,8 +8,20 @@
 > - 具体实现细节（参见源代码实现）
 > 
 > **部署约束**：本文档仅考虑单实例部署，不支持多实例水平扩展。
-> 
-> 以下章节仅作为设计参考，实际实现请参考相关代码和文档。
+
+## 实现状态总览
+
+| 功能模块 | 实现状态 | 实现文件 |
+|---------|---------|----------|
+| SessionManager 核心 | ✅ 已实现 | `laffybot/session/manager.py` |
+| SessionStore 接口 | ✅ 已实现 | `laffybot/session/store.py` |
+| SQLiteStore 实现 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore` |
+| SessionInfo 数据结构 | ✅ 已实现 | `laffybot/session/models.py` |
+| ContextBuilder 集成 | ✅ 已实现 | `laffybot/session/manager.py` → `_build_messages` |
+| CancellationToken | ✅ 已实现 | `laffybot/agent/cancellation.py` |
+| 并发控制 (asyncio.Lock) | ✅ 已实现 | `laffybot/session/manager.py` → `_locks` |
+| Token 元数据持久化 | ✅ 已实现 | `laffybot/session/store.py` → `save_message` |
+| 异常定义 | ✅ 已实现 | `laffybot/session/errors.py` |
 
 ## 概述
 
@@ -40,27 +52,39 @@ SessionManager 是 Laffybot API 的核心组件，负责管理会话生命周期
 ```
 
 **设计决策：**
-- **SessionManager 单例**：整个应用只有一个 SessionManager 实例，管理所有会话
-- **AgentRunner 按需创建**：每次请求创建新的 AgentRunner 实例，Provider 由工厂函数创建
-- **SessionStore 依赖注入**：SessionStore 作为依赖注入，支持不同存储后端
-- **上下文构建内联**：SessionManager 内部实现 `_build_messages()` 方法构建消息上下文（ContextBuilder 待实现）
+- **SessionManager 单例**：整个应用只有一个 SessionManager 实例，管理所有会话 ✅
+- **AgentRunner 按需创建**：每次请求创建新的 AgentRunner 实例，Provider 由工厂函数创建 ✅
+- **SessionStore 依赖注入**：SessionStore 作为依赖注入，支持不同存储后端 ✅
+- **ContextBuilder 集成**：SessionManager 通过依赖注入使用 ContextBuilder 组件 ✅（已实现，参见 `context-builder-design.md`）
 
 ## 核心职责
 
 ### 1. 会话生命周期管理
-创建、获取、删除、列出会话
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py`
+
+创建、获取、删除、列出会话 ✅
 
 ### 2. 状态管理
-状态转换验证、并发控制、状态持久化
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py`, `laffybot/session/store.py`
+
+状态转换验证 ✅、并发控制 ✅、状态持久化 ✅
 
 ### 3. 请求调度
-消息发送协调、取消请求处理、错误恢复
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py:send_message`
+
+消息发送协调 ✅、取消请求处理 ✅、错误恢复 ✅
 
 ### 4. 上下文构建
-历史消息查询、系统提示组装、完整上下文构建（当前在 SessionManager 内部实现 `_build_messages()` 方法，未来计划提取为独立 ContextBuilder 组件）
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py:_build_messages`, `laffybot/context/builder.py`
+
+历史消息查询 ✅、系统提示组装 ✅、完整上下文构建 ✅
+
+**实现说明**：已提取为独立的 `ContextBuilder` 组件，SessionManager 通过依赖注入使用。
 
 ### 5. 资源管理
-AgentRunner 实例管理（按需创建）、CancellationToken 生命周期
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py`
+
+AgentRunner 实例管理（按需创建）✅、CancellationToken 生命周期 ✅
 
 > **注意**：SSE 连接的心跳机制由独立的 HeartbeatManager 处理（参见 `heartbeat-design.md`），不属于 SessionManager 职责。健康检查端点由 API 层直接处理，也不属于 SessionManager 职责。
 
@@ -90,10 +114,12 @@ AgentRunner 实例管理（按需创建）、CancellationToken 生命周期
 
 ### SessionStore 接口
 
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/store.py:SessionStore`
+
 SessionStore 是会话持久化存储的抽象接口，支持不同的存储后端实现。
 
 #### create_session
-创建新会话记录。
+创建新会话记录。✅ 已实现
 
 **签名：**
 ```python
@@ -239,6 +265,8 @@ async def get_message_count(self, session_id: str) -> int
 
 ### SessionManager 接口
 
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py:SessionManager`
+
 #### 初始化
 ```python
 def __init__(
@@ -246,12 +274,14 @@ def __init__(
     store: SessionStore,
     tool_registry: ToolRegistry,
     provider_factory: Callable[[str], BaseProvider],
+    context_config: ContextConfig | None = None,
+    context_builder: ContextBuilder | None = None,
 ) -> None
 ```
 
-**参数：** `store` - 会话持久化存储；`tool_registry` - 工具注册表；`provider_factory` - LLM 提供者工厂函数
+**参数：** `store` - 会话持久化存储；`tool_registry` - 工具注册表；`provider_factory` - LLM 提供者工厂函数；`context_config` - 上下文构建配置（可选）；`context_builder` - ContextBuilder 实例（可选，支持依赖注入）
 
-> **注意：** ContextBuilder 参数已移除，当前上下文构建逻辑在 SessionManager 内部实现。未来计划提取为独立组件。
+> **注意：** ContextBuilder 已实现，SessionManager 支持通过依赖注入使用自定义 ContextBuilder 实现。
 
 #### create_session
 创建新会话。
@@ -325,7 +355,7 @@ async def cancel_request(
 **异常：** `SessionNotFoundError` - 会话不存在；`SessionNotBusyError` - 会话不忙碌
 
 #### get_history
-> **注意：** 此方法在当前实现中不存在。历史消息通过 `SessionStore.get_messages()` 直接获取。
+> **注意：** 此方法在当前实现中不存在。历史消息通过 `SessionStore.get_messages()` 直接获取，由 `ContextBuilder.build_messages()` 处理。✅ 已实现
 
 **计划签名：**
 ```python
@@ -343,7 +373,7 @@ async def get_history(
 
 **异常：** `SessionNotFoundError` - 会话不存在
 
-适配不同 LLM 的上下文窗口限制，避免 token 超限，减少无关历史对推理质量的干扰。此功能计划在 ContextBuilder 组件中实现。
+**实现说明**：此功能已在 `ContextBuilder` 组件中实现，参见 `context-builder-design.md`。
 
 #### delete_session
 删除会话。

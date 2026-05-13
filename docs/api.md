@@ -25,7 +25,7 @@ aiosqlite>=0.19.0
 | `idle` | 空闲，无正在进行的请求 | 发送消息、获取历史、删除 |
 | `busy` | 正在处理请求 | 取消请求、获取信息 |
 | `error` | 发生错误，需处理 | 获取历史、删除 |
-| `inactive` | 已关闭/失效 | 无 |
+| `inactive` | 已失效，不再活跃 | 获取历史、删除 |
 
 ### 状态转换
 
@@ -33,9 +33,12 @@ aiosqlite>=0.19.0
 idle -> busy     (发送消息)
 busy -> idle     (请求完成)
 busy -> error    (发生错误)
-idle -> inactive (删除会话)
-error -> inactive (删除会话)
+idle -> inactive (会话失效：长时间未活动、用户标记、系统策略)
+error -> inactive (会话失效)
+inactive -> idle (恢复会话)
 ```
+
+> **注意：** `inactive` 状态不是删除操作。删除会话（DELETE /api/v1/sessions/{session_id}）会从数据库中永久移除会话及其所有消息。`inactive` 状态表示会话已失效但数据仍保留，可随时恢复为 `idle` 状态。
 
 ## 并发控制
 
@@ -248,6 +251,8 @@ data: {"type": "ping", "timestamp": "2024-01-15T10:30:15Z"}
 
 客户端应忽略 `ping` 事件，无需特殊处理。心跳间隔默认 15 秒，可通过服务端配置调整。
 
+> **设计详情**：心跳机制的详细设计参见 `heartbeat-design.md`。
+
 ### 5. 取消请求
 
 > **✅ 实现状态：已完成**
@@ -306,6 +311,8 @@ DELETE /api/v1/sessions/{session_id}
 }
 ```
 
+> **注意：** 删除操作会从数据库中永久移除会话及其所有消息，不是将状态设置为 `inactive`。
+
 ### 7. 列出所有会话
 
 ```
@@ -324,7 +331,7 @@ GET /api/v1/sessions
         {
             "session_id": "550e8400-e29b-41d4-a716-446655440000",
             "model": "deepseek-ai/DeepSeek-V3",
-            "status": "active",
+            "status": "idle",
             "created_at": "2024-01-15T10:30:00Z",
             "message_count": 5
         }
@@ -353,7 +360,6 @@ GET /api/v1/sessions
 
 | HTTP 状态码 | 错误码 | 描述 |
 |------------|--------|------|
-| 400 | INVALID_REQUEST | 请求参数无效 |
 | 400 | INVALID_REQUEST | 请求参数无效 |
 | 404 | SESSION_NOT_FOUND | 会话不存在 |
 | 409 | SESSION_INACTIVE | 会话已失效 |

@@ -1,5 +1,9 @@
 # SessionManager SQLite 实现设计文档
 
+> **✅ 实现状态：已完成**
+> 
+> 实现位置：`laffybot/session/store.py:SQLiteStore`
+
 > **文档范围说明**：本文档专注于 SessionManager 使用 SQLite 数据库的实现设计，包括数据库 schema、SessionStore 实现策略和关键技术决策。
 > 
 > **本文档不包含以下内容**：
@@ -9,6 +13,11 @@
 > - API 层实现细节（参见 api.md）
 > 
 > **部署约束**：本文档仅考虑单实例部署，SQLite 数据库文件位于本地文件系统。
+
+## 实现状态总览
+
+| 功能模块 | 实现状态 | 实现文件 |
+|---------|---------|----------|\n| SQLiteStore 类 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore` |\n| sessions 表 | ✅ 已实现 | 包含所有设计字段 |\n| messages 表 | ✅ 已实现 | 包含 token 字段（迁移已实现） |\n| 外键约束 | ✅ 已实现 | `PRAGMA foreign_keys = ON` |\n| WAL 模式 | ✅ 已实现 | `PRAGMA journal_mode = WAL` |\n| 乐观锁更新 | ✅ 已实现 | `update_session_status` 支持乐观锁 |\n| Token 元数据字段 | ✅ 已实现 | `input_tokens`, `output_tokens` 列 |
 
 ## 概述
 
