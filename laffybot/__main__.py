@@ -33,6 +33,7 @@ def main() -> None:
         app,
         host=config.host,
         port=config.port,
+        timeout_graceful_shutdown=5,
     )
 
 

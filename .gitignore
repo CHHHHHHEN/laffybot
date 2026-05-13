@@ -17,3 +17,4 @@ laffybot.db-shm
 
 # config
 config.json
+.env

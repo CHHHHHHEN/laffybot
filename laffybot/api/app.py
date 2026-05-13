@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from loguru import logger
 
 from laffybot import __version__
 from laffybot.agent.tools.registry import ToolRegistry
@@ -46,8 +48,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         yield
-        await provider_store_obj.close()
-        await store_obj.close()
+        for obj in (provider_store_obj, store_obj):
+            try:
+                await asyncio.wait_for(obj.close(), timeout=5)
+            except TimeoutError:
+                logger.warning("store close timed out")
+            except Exception:
+                logger.exception("store close failed")
 
     app = FastAPI(title="Laffybot API", version=__version__, lifespan=lifespan)
 

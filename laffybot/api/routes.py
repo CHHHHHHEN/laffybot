@@ -268,6 +268,38 @@ async def create_provider(
     return _serialize_provider(provider)
 
 
+@router.get("/providers/active", response_model=ActiveSelectionResponse | None)
+async def get_active_selection(
+    provider_store: ProviderStore = Depends(get_provider_store),
+) -> dict[str, object] | None:
+    selection = await provider_store.get_active_selection()
+    if selection is None:
+        return None
+    return {
+        "provider_id": selection.provider_id,
+        "model_id": selection.model_id,
+        "provider_name": selection.provider_name,
+        "model_name": selection.model_name,
+    }
+
+
+@router.put("/providers/active", response_model=ActiveSelectionResponse)
+async def set_active_selection(
+    payload: ActiveSelectionUpdateRequest,
+    provider_store: ProviderStore = Depends(get_provider_store),
+) -> dict[str, object]:
+    await provider_store.set_active_selection(payload.provider_id, payload.model_id)
+    selection = await provider_store.get_active_selection()
+    if selection is None:
+        raise NoActiveProviderError()
+    return {
+        "provider_id": selection.provider_id,
+        "model_id": selection.model_id,
+        "provider_name": selection.provider_name,
+        "model_name": selection.model_name,
+    }
+
+
 @router.get("/providers/{provider_id}", response_model=ProviderDetailResponse)
 async def get_provider(
     provider_id: str,
@@ -368,38 +400,6 @@ async def test_provider(
         if "timeout" in exc_str.lower() or "connect" in exc_str.lower() or "NameResolutionError" in type(exc).__name__:
             raise ProviderConnectionError(f"Connection failed: {exc}") from exc
         return {"success": False, "message": f"Test failed: {exc}", "latency_ms": latency}
-
-
-@router.get("/providers/active", response_model=ActiveSelectionResponse | None)
-async def get_active_selection(
-    provider_store: ProviderStore = Depends(get_provider_store),
-) -> dict[str, object] | None:
-    selection = await provider_store.get_active_selection()
-    if selection is None:
-        return None
-    return {
-        "provider_id": selection.provider_id,
-        "model_id": selection.model_id,
-        "provider_name": selection.provider_name,
-        "model_name": selection.model_name,
-    }
-
-
-@router.put("/providers/active", response_model=ActiveSelectionResponse)
-async def set_active_selection(
-    payload: ActiveSelectionUpdateRequest,
-    provider_store: ProviderStore = Depends(get_provider_store),
-) -> dict[str, object]:
-    await provider_store.set_active_selection(payload.provider_id, payload.model_id)
-    selection = await provider_store.get_active_selection()
-    if selection is None:
-        raise NoActiveProviderError()
-    return {
-        "provider_id": selection.provider_id,
-        "model_id": selection.model_id,
-        "provider_name": selection.provider_name,
-        "model_name": selection.model_name,
-    }
 
 
 # ─── Serializers ───────────────────────────────────────────────────────────────
