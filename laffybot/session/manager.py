@@ -82,6 +82,13 @@ class SessionManager:
     ) -> tuple[list[SessionInfo], int]:
         return await self.store.list_sessions(status=status, limit=limit, offset=offset)
 
+    async def get_session_history(
+        self,
+        session_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return await self.store.get_messages(session_id, limit=limit)
+
     async def delete_session(self, session_id: str) -> None:
         session = await self.store.get_session(session_id)
         if session.status == "busy":

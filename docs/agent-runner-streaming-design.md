@@ -1,8 +1,8 @@
 # AgentRunner 流式支持实现计划
 
-> **✅ 实现状态：已完成**
+> **✅ 实现状态：核心链路已实现，心跳与断线重放仍为预留能力**
 > 
-> 本文档描述的设计已全部实现。实现代码位于：
+> 本文档描述的核心流式链路已实现。实现代码位于：
 > - `laffybot/agent/runner.py` - `AgentRunner.run_stream()` 方法
 > - `laffybot/agent/events.py` - SSE 事件类型定义
 > - `laffybot/agent/cancellation.py` - 取消机制
@@ -121,7 +121,7 @@ session_start
 | `OpenAIProvider` | `laffybot/providers/openai.py` | ✅ 已实现流式支持，支持 `reasoning_content` |
 | `SSEEvent` | `laffybot/agent/events.py` | ✅ 完整事件类型定义 |
 | `CancellationToken` | `laffybot/agent/cancellation.py` | ✅ 取消机制 |
-| `HeartbeatManager` | `laffybot/agent/heartbeat.py` | ✅ 心跳机制 |
+| `HeartbeatManager` | `laffybot/agent/heartbeat.py` | ✅ 组件已实现，但尚未接入 `run_stream()` |
 | `StreamChunk` | `laffybot/providers/types.py` | ✅ 流式增量数据结构 |
 | `ToolCallDelta` | `laffybot/providers/types.py` | ✅ 工具调用增量结构 |
 
@@ -141,6 +141,7 @@ session_start
 3. **流式集成**：`chat_completion_stream()` 已在 `AgentRunner` 中使用 ✅
 4. **工具追踪**：工具执行计时和状态追踪已实现 ✅
 5. **取消机制**：请求取消和资源清理机制已实现 ✅
+6. **心跳保活**：`HeartbeatManager` 已实现，但当前未由 `AgentRunner.run_stream()` 或 API SSE 路由调度
 
 ---
 
@@ -196,7 +197,7 @@ session_start
 
 **变更范围**：
 - 异常处理和 `error` 事件 ✅
-- 心跳监控和 `ping` 事件 ✅
+- `ping` 事件和心跳组件已实现为独立模块，但尚未接入当前 SSE 主流程 ⚠️
 - 取消机制和 `cancelled` 事件 ✅
 
 **错误分类与处理**：
@@ -208,6 +209,8 @@ session_start
 | 流式错误 | `STREAM_ERROR` | 关闭连接 | 立即终止，清理资源，不产生 done 事件 | 连接中断 |
 | 内部错误 | `INTERNAL_ERROR` | 记录日志 | 终止当前请求，返回通用错误消息 | 代码 bug |
 | 取消错误 | `CANCELLED` | 清理资源 | 产生 cancelled 事件，正常结束 | 用户取消 |
+
+> **当前代码注记：** `AgentRunner.run_stream()` 直接发出的运行时 `error.code` 主要是 `LLM_ERROR` 和 `INTERNAL_ERROR`；工具执行异常当前会以 `tool_result(success=false)` 返回，不会单独产生 `TOOL_ERROR` 事件。`STREAM_ERROR` 和 `TOOL_ERROR` 仍更偏向设计预留。
 
 **错误恢复策略详解**：
 
@@ -269,7 +272,7 @@ session_start
 **规范要求**：
 - 异常必须转换为 `error` 事件，不应中断事件流
 - `error` 事件后必须产生 `done` 事件（`stop_reason="error"`）
-- 连接空闲超过 15 秒必须产生 `ping` 事件
+- 连接空闲超过 15 秒必须产生 `ping` 事件（当前实现仅在独立 `HeartbeatManager` 中提供，尚未接入 `run_stream()`）
 
 ---
 
@@ -404,7 +407,7 @@ AgentRunner.run_stream() (检查取消状态)
 
 | 组件 | 职责 | 状态 |
 |------|------|------|
-| `HeartbeatManager` | 管理心跳计时器，生成 `ping` 事件 | ✅ |
+| `HeartbeatManager` | 管理心跳计时器，生成 `ping` 事件 | ⚠️ 已实现，但未接入 `run_stream()` |
 
 **注意**：`EventEmitter` 未单独实现，心跳重置逻辑通过 `HeartbeatManager.reset()` 方法调用。
 
@@ -441,9 +444,9 @@ AgentRunner.run_stream() (检查取消状态)
 
 ### 与流式输出的集成
 
-- `HeartbeatManager` 作为独立后台任务运行 ✅
-- `AgentRunner.run_stream()` 在产生事件时通知 `HeartbeatManager` ✅
-- 流式结束时取消心跳任务 ✅
+- `HeartbeatManager` 作为独立组件已实现，但当前未由流式主流程调度 ⚠️
+- `AgentRunner.run_stream()` 在当前代码中尚未通知 `HeartbeatManager` ⚠️
+- 流式结束时取消心跳任务是设计目标，当前路由层未接入该任务 ⚠️
 
 ---
 

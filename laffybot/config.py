@@ -56,3 +56,22 @@ class ContextConfig(BaseModel):
         default=True,
         description="Prefer exact token counts from LLM usage when available.",
     )
+
+
+class ApiConfig(BaseSettings):
+    """HTTP API configuration."""
+
+    database_path: str = Field(
+        default="laffybot.db",
+        description="SQLite database path for session persistence.",
+    )
+    host: str = Field(default="0.0.0.0", description="HTTP bind host.")
+    port: int = Field(default=8000, ge=1, le=65535, description="HTTP bind port.")
+    cors_origins: list[str] = Field(
+        default_factory=list,
+        description="Allowed CORS origins.",
+    )
+    cors_allow_credentials: bool = Field(
+        default=False,
+        description="Allow credentialed CORS requests.",
+    )

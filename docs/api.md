@@ -41,7 +41,7 @@ error -> idle    (重新发送消息)
 
 - 当会话状态为 `busy` 时，新的 `/stream` 请求将返回 `409 SESSION_BUSY` 错误
 - 客户端应等待当前请求完成后再发送新请求
-- 如需取消当前请求，使用取消接口（待实现）
+- 如需取消当前请求，使用取消接口（已实现）
 
 ## 日志记录
 
@@ -201,11 +201,13 @@ data: {}
 
 > **注意:** `reasoning` 事件由后端统一处理不同 LLM 提供商的思维链格式差异（如 DeepSeek 的 `reasoning_content` 字段），对外暴露统一的事件格式，客户端无需关心底层实现细节。
 
+> **当前代码注记：** `laffybot/agent/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，但现有 `/sessions/{session_id}/messages` SSE 路径尚未接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
+
 **实现说明：**
 
-> **✅ 当前实现状态**
+> **当前实现状态**
 > 
-> 当前版本已完整实现流式事件输出：
+> 当前版本已实现核心流式链路，但心跳与断线重放仍是预留能力：
 > 
 > 1. **Phase 1 - 基础流式支持** ✅：
 >    - `AgentRunner.run_stream()` 方法已实现
@@ -215,12 +217,12 @@ data: {}
 > 2. **Phase 2 - 工具调用流式** ✅：
 >    - 实现 `tool_call`、`tool_result` 事件
 >    - 支持工具执行计时（`duration_ms`）
->    - 支持工具执行进度反馈
+>    - 工具执行失败会以 `tool_result(success=false)` 形式返回
 > 
-> 3. **Phase 3 - 完整事件流** ✅：
->    - 完善所有事件类型（`error`、`cancelled`、`ping`）
->    - 支持心跳机制（`HeartbeatManager`）
->    - 支持取消机制（`CancellationToken`）
+> 3. **Phase 3 - 取消与错误处理** ✅：
+>    - 支持 `error` 与 `cancelled` 事件
+>    - 支持 `CancellationToken` 取消链路
+>    - `ping` / `HeartbeatManager` 已实现为独立模块，但尚未接入当前 SSE 路径
 
 **stop_reason 取值:**
 - `completed`: 正常完成
@@ -360,7 +362,7 @@ GET /api/v1/sessions
 | 409 | SESSION_BUSY | 会话正在处理请求 |
 | 409 | SESSION_NOT_BUSY | 会话当前无请求可取消 |
 | 500 | INTERNAL_ERROR | 内部服务器错误 |
-| 503 | PROVIDER_ERROR | LLM 提供商错误 |
+| 503 | PROVIDER_ERROR | LLM 提供商错误（设计预留，当前 HTTP 层未直接返回） |
 
 ## SSE 事件类型
 
@@ -368,7 +370,7 @@ GET /api/v1/sessions
 
 ### 客户端重连机制
 
-SSE 连接断开后，客户端可使用 `Last-Event-ID` 请求头重连。服务端每个事件携带 `id` 字段：
+SSE 连接断开后，协议层保留了 `Last-Event-ID` 请求头和每个事件的 `id` 字段：
 
 ```
 id: evt_001
@@ -380,7 +382,7 @@ event: message
 data: {"type": "content", "text": " world"}
 ```
 
-重连后服务端从 `Last-Event-ID` 对应事件的下一个事件开始推送。若对应会话已结束，则返回 `done` 事件。
+当前代码尚未实现基于 `Last-Event-ID` 的事件回放，因此断线续传属于设计预留能力，客户端需要按新的请求流程重新建立连接。
 
 ## 健康检查
 

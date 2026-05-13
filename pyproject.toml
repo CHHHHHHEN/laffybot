@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "laffybot-ai"
 version = "0.1.0"
@@ -6,6 +10,8 @@ readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.13"
 dependencies = [
     "loguru",
+    "fastapi",
+    "uvicorn",
     "pydantic",
     "pydantic-settings",
     "openai",
