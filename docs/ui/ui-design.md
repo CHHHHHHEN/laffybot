@@ -223,26 +223,28 @@ POST /api/v1/sessions/{id}/messages → 建立 SSE 连接
     ├── session_start → 记录 request_id，设置 connectionStatus=connected，
     │                   标记会话为 busy
     ├── content      → 追加到 streamBuffer.text
-    │                   （StreamMessage 通过 updateLastMessage 渲染）
+    │                   （流期间暂存 buffer，结束时一次性渲染）
     ├── reasoning    → 追加到 streamBuffer.reasoning
-    │                   （ReasoningBlock 实时更新）
+    │                   （流期间暂存 buffer，结束时一次性渲染）
     ├── tool_call    → 追加到 streamBuffer.toolCalls[]
-    │                   （ToolCallCard 立即出现）
+    │                   （流期间暂存 buffer，结束时一次性渲染）
     ├── tool_result  → 更新对应 tool_call_id 的状态和结果
-    │                   （ToolCallCard → ToolResultBlock）
-    ├── done          → flushStreamBuffer → 将 streamBuffer 转为正式 Message
-    │                   标记 isStreaming=false，connectionStatus=disconnected
+    │                   （更新 buffer 中的工具调用状态）
+    ├── done          → flushStreamBuffer → 更新最后一条 streaming assistant 消息
+    │                   （原地替换，而非追加新消息），重置 buffer，
+    │                   标记 isStreaming=false，connectionStatus=disconnected，
     │                   标记会话为 idle，刷新会话信息
-    ├── error         → flushStreamBuffer → 标记错误 isError=true
-    │                   标记会话为 error，重置 buffer
-    ├── cancelled     → flushStreamBuffer → 标记中断
-    │                   标记会话为 idle，重置 buffer
+    ├── error         → flushStreamBuffer → 更新最后一条 streaming 消息并标记 isError=true，
+    │                   重置 buffer，标记会话为 error
+    ├── cancelled     → flushStreamBuffer → 更新最后一条 streaming 消息，
+    │                   重置 buffer，标记会话为 idle
     └── ping          → 忽略，无操作
 ```
 
 > **实现说明**：流式渲染使用两层缓冲区——streamBuffer 在 SSE 事件期间累积内容（text、reasoning、toolCalls），
-> 同时通过 `updateLastMessage` 实时更新最后一条助手消息的显示。`done`/`error`/`cancelled` 事件触发
-> `flushStreamBuffer` 将缓冲区内容作为正式消息追加到 messages 列表，并重置 buffer。
+> 流结束前 UI 不渲染 buffer 内容，仅显示打字光标。`done`/`error`/`cancelled` 事件触发
+> `flushStreamBuffer` 将缓冲区内容**原地更新**到最后一条 `isStreaming=true` 的 streaming assistant
+> 消息上（而非追加新消息），然后重置 buffer。
 
 ### 会话切换
 

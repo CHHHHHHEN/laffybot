@@ -53,6 +53,7 @@ class AgentRunner:
         self,
         spec: AgentRunSpec,
         session_id: str | None = None,
+        request_id: str | None = None,
         cancellation_token: CancellationToken | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
         """Execute agent with streaming SSE event output.
@@ -63,6 +64,7 @@ class AgentRunner:
         Args:
             spec: Agent execution specification.
             session_id: Optional session ID for session_start event.
+            request_id: Optional request ID for session_start event. If not provided, one is generated.
             cancellation_token: Optional token for cancellation support.
 
         Yields:
@@ -73,7 +75,7 @@ class AgentRunner:
         """
         token = cancellation_token or CancellationToken()
         session_id = session_id or str(uuid.uuid4())
-        request_id = f"req_{uuid.uuid4().hex[:12]}"
+        request_id = request_id or f"req_{uuid.uuid4().hex[:12]}"
 
         messages = list(spec.initial_messages)
         tools_used: list[str] = []

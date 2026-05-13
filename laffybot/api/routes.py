@@ -25,7 +25,12 @@ from laffybot.api.schemas import (
     SessionListResponse,
     SessionResponse,
 )
-from laffybot.session.errors import SessionBusyError, SessionError, SessionNotFoundError
+from laffybot.session.errors import (
+    SessionBusyError,
+    SessionError,
+    SessionNotFoundError,
+    SessionStateError,
+)
 from laffybot.session.manager import SessionManager
 from laffybot.session.models import SessionInfo, SessionStatus
 from laffybot.session.store import SessionStore
@@ -93,11 +98,15 @@ async def _stream_session_events(
         return
     except SessionError as exc:
         event_index += 1
-        code = "SESSION_BUSY" if isinstance(exc, SessionBusyError) else "INVALID_REQUEST"
+        if isinstance(exc, SessionBusyError):
+            code = "SESSION_BUSY"
+        elif isinstance(exc, SessionStateError):
+            code = "SESSION_STATE_ERROR"
+        else:
+            code = "INVALID_REQUEST"
         yield _sse_frame(event_error(code=code, message=str(exc)), f"evt_{event_index}")
         yield "event: done\ndata: {}\n\n"
         return
-    yield "event: done\ndata: {}\n\n"
 
 
 @router.post("/sessions", response_model=SessionResponse, status_code=http_status.HTTP_201_CREATED)

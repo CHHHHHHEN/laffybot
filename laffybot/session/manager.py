@@ -148,6 +148,7 @@ class SessionManager:
                 async for event in runner.run_stream(
                     spec,
                     session_id=session_id,
+                    request_id=request_id,
                     cancellation_token=token,
                 ):
                     yield event

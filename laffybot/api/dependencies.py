@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
+from pathlib import Path
 
 from fastapi import Request
 
@@ -14,11 +16,32 @@ from laffybot.session.manager import SessionManager
 from laffybot.session.store import SessionStore, SQLiteStore
 
 
+def _load_provider_config() -> ProviderConfig:
+    """Load ProviderConfig from config.json or env vars."""
+    config_path = Path("config.json")
+    if config_path.exists():
+        with open(config_path) as f:
+            data = json.load(f)
+        api_key = data.get("api_key")
+        base_url = data.get("base_url")
+        if api_key and base_url:
+            extra_headers = data.get("extra_headers") or {}
+            extra_body = data.get("extra_body") or {}
+            return ProviderConfig(
+                api_key=api_key,
+                base_url=base_url,
+                extra_headers=extra_headers,
+                extra_body=extra_body,
+            )
+    return ProviderConfig()  # type: ignore[call-arg]  # BaseSettings reads from env
+
+
 def default_provider_factory() -> Callable[[str], BaseProvider]:
     """Build the default provider factory from process configuration."""
+    config = _load_provider_config()
 
     def factory(_: str) -> BaseProvider:
-        return OpenAIProvider(ProviderConfig())
+        return OpenAIProvider(config)
 
     return factory
 

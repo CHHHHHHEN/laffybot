@@ -102,22 +102,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })),
 
   flushStreamBuffer: () => {
-    const { streamBuffer } = get()
+    const { streamBuffer, messages } = get()
     if (!streamBuffer.text && streamBuffer.toolCalls.length === 0) return
 
-    const message: Message = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: streamBuffer.text,
-      timestamp: new Date().toISOString(),
-      reasoning: streamBuffer.reasoning || undefined,
-      tool_calls: streamBuffer.toolCalls.length > 0 ? streamBuffer.toolCalls : undefined,
-    }
+    const messagesCopy = [...messages]
+    const lastMsg = messagesCopy[messagesCopy.length - 1]
 
-    set((state) => ({
-      messages: [...state.messages, message],
-      streamBuffer: { text: '', reasoning: '', toolCalls: [] },
-    }))
+    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
+      messagesCopy[messagesCopy.length - 1] = {
+        ...lastMsg,
+        content: streamBuffer.text,
+        reasoning: streamBuffer.reasoning || undefined,
+        tool_calls: streamBuffer.toolCalls.length > 0 ? streamBuffer.toolCalls : undefined,
+        isStreaming: false,
+      }
+      set({
+        messages: messagesCopy,
+        streamBuffer: { text: '', reasoning: '', toolCalls: [] },
+      })
+    } else {
+      const message: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: streamBuffer.text,
+        timestamp: new Date().toISOString(),
+        reasoning: streamBuffer.reasoning || undefined,
+        tool_calls: streamBuffer.toolCalls.length > 0 ? streamBuffer.toolCalls : undefined,
+      }
+      set((state) => ({
+        messages: [...state.messages, message],
+        streamBuffer: { text: '', reasoning: '', toolCalls: [] },
+      }))
+    }
   },
 
   setActiveRequestId: (id) => set({ activeRequestId: id }),

@@ -180,10 +180,9 @@ data: {"type": "content", "text": "Based on the file..."}
 
 event: message
 data: {"type": "done", "stop_reason": "completed", "usage": {"prompt_tokens": 150, "completion_tokens": 200}, "tools_used": ["read_file"]}
-
-event: done
-data: {}
 ```
+
+> `event: done\ndata: {}` 仅在请求异常终止（如会话状态错误）时作为终止信号发送。正常完成流以 `{"type": "done"}` 事件结束，无需额外的终止标记。
 
 **SSE 事件类型详解:**
 
@@ -285,13 +284,13 @@ POST /api/v1/sessions/{session_id}/cancel
 **错误响应:**
 - `409 SESSION_NOT_BUSY`: 会话当前没有正在进行的请求
 
-取消后，SSE 连接将收到 `cancelled` 事件并关闭：
+取消后，SSE 连接将收到 `cancelled` 事件及 `done` 事件后关闭：
 ```
 event: message
 data: {"type": "cancelled", "reason": "User cancelled"}
 
-event: done
-data: {}
+event: message
+data: {"type": "done", "stop_reason": "cancelled"}
 ```
 
 ### 6. 删除会话
@@ -361,6 +360,7 @@ GET /api/v1/sessions
 | 404 | SESSION_NOT_FOUND | 会话不存在 |
 | 409 | SESSION_BUSY | 会话正在处理请求 |
 | 409 | SESSION_NOT_BUSY | 会话当前无请求可取消 |
+| 409 | SESSION_STATE_ERROR | 会话状态转换冲突（如预期状态与实际不匹配） |
 | 500 | INTERNAL_ERROR | 内部服务器错误 |
 | 503 | PROVIDER_ERROR | LLM 提供商错误（设计预留，当前 HTTP 层未直接返回） |
 

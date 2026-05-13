@@ -46,12 +46,12 @@
 | SSE 事件 | `chat-store` 处理 | UI 表现 |
 |----------|-------------------|---------|
 | `session_start` | 记录 `activeRequestId`，`setConnectionStatus('connected')`，标记会话为 busy | 无直接 UI 变化 |
-| `content` | `appendToStreamBuffer('text', text)` → `updateLastMessage` 更新最后一条助手消息 | `StreamMessage` 逐 token 渲染 |
-| `reasoning` | `appendToStreamBuffer('reasoning', text)` → `updateLastMessage` | `ReasoningBlock` 实时内容追加 |
-| `tool_call` | `addToolCallToBuffer(toolCall)` → `updateLastMessage` | `ToolCallCard` 立即出现，展示工具名和参数 |
-| `tool_result` | `updateToolCallInBuffer(tool_call_id, updates)` → `updateLastMessage` | `ToolCallCard` 转为完成态（ToolResultBlock），展示结果/耗时 |
-| `done` | `flushStreamBuffer()` → 转存为正式 Message，重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle | 移除流式光标，渲染完成状态 |
-| `error` | `flushStreamBuffer()`，标记 isError=true，`setConnectionStatus('error')`，标记会话为 error | 消息气泡显示"发送失败" |
+| `content` | `appendToStreamBuffer('text', text)` | 流期间内容暂存 buffer，`flushStreamBuffer` 时一次性渲染 |
+| `reasoning` | `appendToStreamBuffer('reasoning', text)` | 同上 |
+| `tool_call` | `addToolCallToBuffer(toolCall)` | 流期间工具调用暂存 buffer，结束时一并渲染 |
+| `tool_result` | `updateToolCallInBuffer(tool_call_id, updates)` | 更新 buffer 中的工具调用状态 |
+| `done` | `flushStreamBuffer()` → 更新最后一条 streaming assistant 消息为正式消息（原地替换，而非追加新消息），重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle | 移除流式光标，渲染完整回复 |
+| `error` | `flushStreamBuffer()`（更新最后一条 streaming 消息，标记 isError=true），`setConnectionStatus('error')`，标记会话为 error | 消息气泡显示"发送失败" |
 | `cancelled` | `flushStreamBuffer()`，重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle | 消息标记为中断 |
 | `ping` | 忽略（无操作） | 无 |
 
