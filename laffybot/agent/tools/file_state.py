@@ -199,7 +199,7 @@ def clear() -> None:
 # Legacy attribute for callers that reached into the module-level dict
 # directly (filesystem.py used to do this). Kept as a property-like accessor
 # so existing imports keep working.
-def __getattr__(name: str):
+def __getattr__(name: str) -> dict[str, ReadState]:
     if name == "_state":
         return _default._state
     raise AttributeError(name)

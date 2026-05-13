@@ -99,7 +99,7 @@ class SystemPromptTemplate:
             TemplateSyntaxError: If template has syntax errors.
         """
         env = Environment(undefined=StrictUndefined)
-        template = env.from_string(template_str)
+        env.from_string(template_str)
 
         # Parse the template source to extract variable names
         ast_node = env.parse(template_str)

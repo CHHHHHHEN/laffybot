@@ -31,7 +31,7 @@ class Schema(ABC):
         """Resolve the non-null type name from JSON Schema ``type`` (e.g. ``['string','null']`` -> ``'string'``)."""
         if isinstance(t, list):
             return next((x for x in t if x != "null"), None)
-        return t  # type: ignore[return-value]
+        return t  # type: ignore[no-any-return]
 
     @staticmethod
     def subpath(path: str, key: str) -> str:
@@ -99,7 +99,7 @@ class Schema(ABC):
         # Try to_json_schema first: Schema instances must be distinguished from dicts that are already JSON Schema
         to_js = getattr(value, "to_json_schema", None)
         if callable(to_js):
-            return to_js()
+            return to_js()  # type: ignore[no-any-return]
         if isinstance(value, dict):
             return value
         raise TypeError(f"Expected schema object or dict, got {type(value).__name__}")
@@ -173,7 +173,7 @@ class Tool(ABC):
 
     def _cast_object(self, obj: Any, schema: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(obj, dict):
-            return obj
+            return obj  # type: ignore[no-any-return]
         props = schema.get("properties", {})
         return {k: self._cast_value(v, props[k]) if k in props else v for k, v in obj.items()}
 
@@ -193,7 +193,7 @@ class Tool(ABC):
             return val
         if t in self._TYPE_MAP and t not in ("boolean", "integer", "array", "object"):
             expected = self._TYPE_MAP[t]
-            if isinstance(val, expected):
+            if isinstance(val, expected):  # type: ignore[arg-type]
                 return val
 
         if isinstance(val, str) and t in ("integer", "number"):
@@ -263,16 +263,16 @@ def tool_parameters(schema: dict[str, Any]) -> Callable[[type[_ToolT]], type[_To
     def decorator(cls: type[_ToolT]) -> type[_ToolT]:
         frozen = deepcopy(schema)
 
-        @property
+        @property  # type: ignore[misc]
         def parameters(self: Any) -> dict[str, Any]:
             return deepcopy(frozen)
 
-        cls._tool_parameters_schema = deepcopy(frozen)
-        cls.parameters = parameters  # type: ignore[assignment]
+        cls._tool_parameters_schema = deepcopy(frozen)  # type: ignore[attr-defined]
+        cls.parameters = parameters  # type: ignore[method-assign]
 
         abstract = getattr(cls, "__abstractmethods__", None)
         if abstract is not None and "parameters" in abstract:
-            cls.__abstractmethods__ = frozenset(abstract - {"parameters"})  # type: ignore[misc]
+            cls.__abstractmethods__ = frozenset(abstract - {"parameters"})
 
         return cls
 

@@ -34,16 +34,16 @@ def build_session_manager(
 
 
 def get_api_config(request: Request) -> ApiConfig:
-    return request.app.state.api_config
+    return request.app.state.api_config  # type: ignore[no-any-return]
 
 
 def get_store(request: Request) -> SessionStore:
-    return request.app.state.store
+    return request.app.state.store  # type: ignore[no-any-return]
 
 
 def get_provider_store(request: Request) -> ProviderStore:
-    return request.app.state.provider_store
+    return request.app.state.provider_store  # type: ignore[no-any-return]
 
 
 def get_session_manager(request: Request) -> SessionManager:
-    return request.app.state.session_manager
+    return request.app.state.session_manager  # type: ignore[no-any-return]

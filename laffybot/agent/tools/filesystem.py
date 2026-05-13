@@ -275,7 +275,7 @@ class ReadFileTool(_FsTool):
 
     def _read_pdf(self, fp: Path, pages: str | None) -> str:
         try:
-            import fitz  # pymupdf
+            import fitz  # type: ignore[import-not-found]  # pymupdf
         except ImportError:
             return "Error: PDF reading requires pymupdf. Install with: pip install pymupdf"
 
@@ -565,7 +565,7 @@ def _find_matches(content: str, old_text: str) -> list[_MatchSpan]:
         lambda: _find_trim_matches(content, old_text, normalize_quotes=True),
         lambda: _find_quote_matches(content, old_text),
     ):
-        matches = matcher()
+        matches = matcher()  # type: ignore[no-untyped-call]
         if matches:
             return matches
     return []
