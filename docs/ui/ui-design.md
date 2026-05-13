@@ -13,7 +13,7 @@
 | 页面结构设计 | ✅ 已完成 | 本文档 |
 | 组件设计 | ✅ 已完成 | 本文档 |
 | 交互与状态设计 | ✅ 已完成 | 本文档 |
-| 实现 | ⏳ 未开始 | |
+| 实现 | ✅ 已完成 | 见下文实现差异说明 |
 
 ## 页面结构
 
@@ -146,26 +146,25 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 
 | 组件 | 职责 | 输入 | 输出 |
 |------|------|------|------|
-| `AppShell` | 整体布局骨架，管理 Sidebar + Main Panel | 无 | 无 |
-| `Sidebar` | 导航 + 会话列表容器 | sessions, activeSessionId | onSelectSession, onNewSession |
-| `SessionList` | 展示所有会话，支持分页加载 | sessions[], isLoading, error | onSelect, onDelete |
-| `SessionItem` | 单个会话卡片 | session, isActive | onClick, onDelete |
-| `NewSessionDialog` | 创建会话的表单对话框 | isOpen, modelOptions[] | onConfirm, onCancel |
-| `ChatHeader` | 当前会话信息标题栏 | session, status | onBack |
-| `MessageList` | 消息容器，管理滚动 | messages[], isStreaming | onScroll |
-| `MessageBubble` | 单条消息渲染 | message | 无 |
-| `StreamMessage` | 流式消息内容区域 | text, reasoning[], toolCalls[] | 无 |
+| `AppShell` | 整体布局骨架，管理 Sidebar + Main Panel；集成 ErrorBoundary、ToastContainer | 无 | 无 |
+| `Sidebar` | 导航 + 会话列表（内联，无独立 SessionList/SessionItem） | sessions, activeSessionId, isLoading | 内部 handleCreateSession, handleDelete |
+| `NewSessionDialog` | 创建会话的表单对话框 | isOpen, error | onSubmit(model, systemPrompt, maxIterations), onCancel |
+| `ChatHeader` | 当前会话信息标题栏 | session, status | onBack（导航到 /chat） |
+| `MessageList` | 消息容器，管理滚动 + 自动跟随 | messages[], isStreaming, isLoading, error, onRetry | 无 |
+| `MessageBubble` | 单条消息渲染（用户/助手分左右对齐） | message | 无 |
+| `StreamMessage` | 流式消息内容区域，含 Markdown 渲染 | text, reasoning, toolCalls, isStreaming | 无 |
 | `ReasoningBlock` | 推理过程折叠展示 | text, isStreaming | 无 |
-| `ToolCallCard` | 工具调用卡片 | name, arguments, status | 无 |
-| `ToolResultBlock` | 工具执行结果 | name, result, success, duration | 无 |
-| `InputBar` | 输入与发送/取消 | isStreaming, disabled | onSubmit, onCancel |
-| `ProviderSettings` | 提供商配置管理 | providers[] | onAdd, onEdit, onDelete |
-| `ToolSettings` | 工具管理 | tools[] | onToggle, onConfigure |
-| `ScrollToBottomButton` | 用户上滚后出现的"回到最新"浮动按钮 | visible, onClick | 无 |
-| `ConnectionStatusBanner` | 连接状态提示横幅 | status (connected/disconnected/reconnecting), message | 无 |
-| `Toast` | 瞬态通知容器 | toasts[] | onDismiss |
-| `ConfirmDialog` | 破坏性操作确认弹窗 | isOpen, title, description, confirmLabel, variant | onConfirm, onCancel |
-| `SessionStatusBadge` | 会话状态标签 | status (idle/busy/error), sessionId | 无 |
+| `ToolCallCard` | 工具调用进行中卡片（可展开参数） | toolCall (id, name, arguments, status) | 无 |
+| `ToolResultBlock` | 工具执行结果卡片 | toolCall (含 result, success, duration_ms) | 无 |
+| `InputBar` | 输入与发送/取消（自动增长高度） | isStreaming, disabled | onSubmit, onCancel |
+| `ProviderSettingsPage` | 提供商配置展示页面（mock 数据，只读） | 无（内部 mock） | 无 |
+| `ToolSettingsPage` | 工具管理页面（本地 toggle 状态） | 无（内部 mock） | 无 |
+| `ScrollToBottomButton` | "回到最新"浮动按钮 | visible, onClick | 无 |
+| `ConnectionStatusBanner` | 连接状态提示横幅 | status (disconnected/connecting/connected/error) | 无 |
+| `Toast` + `ToastContainer` | 瞬态通知容器（Zustand store + 渲染组件） | 无（内部 store） | onDismiss（自动 / 手动） |
+| `ConfirmDialog` | 破坏性操作确认弹窗（Escape 关闭） | isOpen, title, description, confirmLabel, variant | onConfirm, onCancel |
+| `SessionStatusBadge` | 会话状态标签 | status (idle/busy/error) | 无 |
+| `ErrorBoundary` | React 错误边界（含刷新按钮 fallback） | children, fallback? | 无 |
 
 ### 关键组件状态
 
@@ -213,24 +212,37 @@ InputBar 提交
 创建用户消息 → 立即追加到 MessageList（乐观更新）
     │
     ▼
+创建空助手消息（isStreaming=true）→ 追加到 MessageList
+    │
+    ▼
 POST /api/v1/sessions/{id}/messages → 建立 SSE 连接
     │
     ▼
     开始接收 SSE 事件流（事件格式详见 api.md）
     │
-    ├── session_start → 记录 request_id，标记会话为 busy
-    ├── content      → 追加 token 到当前助手消息的文本缓冲区
-    │                   并触发 MessageBubble 重新渲染
-    ├── reasoning    → 追加到推理过程缓冲区，ReasoningBlock 实时更新
-    ├── tool_call    → 创建 ToolCallCard，显示工具名和参数
-    ├── tool_result  → 更新对应的 ToolCallCard 为完成状态
-    │                   显示执行结果和耗时
-    ├── done          → 标记消息完成，更新 usage 和 tools_used 信息
-    │                   关闭 SSE 连接，标记会话为 idle
-    ├── error         → 显示错误消息，标记会话为 error
-    ├── cancelled     → 标记消息为中断状态，标记会话为 idle
+    ├── session_start → 记录 request_id，设置 connectionStatus=connected，
+    │                   标记会话为 busy
+    ├── content      → 追加到 streamBuffer.text
+    │                   （StreamMessage 通过 updateLastMessage 渲染）
+    ├── reasoning    → 追加到 streamBuffer.reasoning
+    │                   （ReasoningBlock 实时更新）
+    ├── tool_call    → 追加到 streamBuffer.toolCalls[]
+    │                   （ToolCallCard 立即出现）
+    ├── tool_result  → 更新对应 tool_call_id 的状态和结果
+    │                   （ToolCallCard → ToolResultBlock）
+    ├── done          → flushStreamBuffer → 将 streamBuffer 转为正式 Message
+    │                   标记 isStreaming=false，connectionStatus=disconnected
+    │                   标记会话为 idle，刷新会话信息
+    ├── error         → flushStreamBuffer → 标记错误 isError=true
+    │                   标记会话为 error，重置 buffer
+    ├── cancelled     → flushStreamBuffer → 标记中断
+    │                   标记会话为 idle，重置 buffer
     └── ping          → 忽略，无操作
 ```
+
+> **实现说明**：流式渲染使用两层缓冲区——streamBuffer 在 SSE 事件期间累积内容（text、reasoning、toolCalls），
+> 同时通过 `updateLastMessage` 实时更新最后一条助手消息的显示。`done`/`error`/`cancelled` 事件触发
+> `flushStreamBuffer` 将缓冲区内容作为正式消息追加到 messages 列表，并重置 buffer。
 
 ### 会话切换
 
@@ -259,9 +271,8 @@ MessageList 渲染历史消息，滚动到底部
 打开 NewSessionDialog
     │
     ▼
-用户选择/输入 model（自由文本输入，
-同时展示最近使用过的模型作为建议列表）
-用户填写: system_prompt（可选） + max_iterations
+用户输入 model（自由文本输入框，**未实现**最近使用模型建议列表）
+用户填写: system_prompt（可选） + max_iterations（默认 10）
     │
     ▼
 POST /sessions → 创建会话
@@ -298,7 +309,24 @@ DELETE /sessions/{id}
     └── 失败 → 回滚列表，Toast 通知错误
 ```
 
-## 状态管理分布
+## 实现差异说明
+
+以下列出实际实现与本文档设计之间的主要差异：
+
+| 项目 | 设计文档 | 实际实现 |
+|------|----------|----------|
+| SessionList / SessionItem | 独立组件 | 内联在 Sidebar.tsx 中，无独立文件 |
+| NewSessionDialog 模型建议 | 展示最近使用过的模型列表 | 仅自由文本输入，无建议列表 |
+| ChatHeader [...] 菜单 | 右侧有更多操作菜单 | 仅含返回按钮、模型名、状态标签 |
+| ConnectionStatusBanner | status 含 `reconnecting` 状态 | 只有 disconnected/connecting/connected/error |
+| 流式渲染机制 | 描述为直接逐 token 追加渲染 | 实际使用 streamBuffer 累积 + flushStreamBuffer 转换 |
+| Keyboard shortcuts | Ctrl+N 新建会话、方向键导航等 | 仅实现 Ctrl+B 切换 Sidebar |
+| ErrorBoundary | 未在组件表中列出 | 已在 AppShell 中集成 |
+| ProviderSettings / ToolSettings | 独立组件 | 页面级文件（ProviderSettingsPage / ToolSettingsPage），使用 mock 数据 |
+| 主题切换 | 跟随系统 + 手动覆盖 | ui-store 中有 theme 状态，但 `.dark` CSS class 切换逻辑未接入 |
+| openapi-typescript | 计划使用 | 未使用，API 类型直接在 api.ts 手写 |
+
+> 以上差异不影响核心功能正常运行，可根据后续需求逐步补齐。
 
 ### Store 职责
 

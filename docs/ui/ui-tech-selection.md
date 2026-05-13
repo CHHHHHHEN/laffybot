@@ -16,13 +16,13 @@
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | 技术选型 | ✅ 已完成 | 本文档 |
-| 项目初始化 | ⏳ 未开始 | |
-| 布局框架 (AppShell/Sidebar) | ⏳ 未开始 | |
-| 聊天面板 (ChatView) | ⏳ 未开始 | |
-| 会话管理 (SessionList) | ⏳ 未开始 | |
-| Agent 展示组件 | ⏳ 未开始 | |
-| 设置面板 | ⏳ 未开始 | |
-| SSE 集成 | ⏳ 未开始 | |
+| 项目初始化 | ✅ 已完成 | Vite + React + TypeScript + Tailwind 4 脚手架已搭建 |
+| 布局框架 (AppShell/Sidebar) | ✅ 已完成 | 含折叠 Sidebar、导航链接、响应式遮罩层 |
+| 聊天面板 (ChatView) | ✅ 已完成 | 含 ChatHeader、MessageList、InputBar、流式渲染 |
+| 会话管理 (SessionList) | ✅ 已完成 | 内联在 Sidebar 内，非独立组件；支持骨架屏、空状态、删除、滚动加载 |
+| Agent 展示组件 | ✅ 已完成 | StreamMessage、ReasoningBlock、ToolCallCard、ToolResultBlock、ScrollToBottomButton、SessionStatusBadge |
+| 设置面板 | ✅ 已完成（只读） | 提供商配置和工具管理页使用 mock 数据，缺管理 API 时仅做展示 |
+| SSE 集成 | ✅ 已完成 | 基于 fetch + ReadableStream 的 POST-based SSE 实现 |
 | Tauri 桌面端 | 📅 规划中 | 将来阶段 |
 
 ## 动机
@@ -148,45 +148,50 @@ Vite build  →  dist/  ──→  Tauri (desktop)
 
 ### 类型安全的 API 契约
 
-使用 `openapi-typescript` 从 FastAPI 的 OpenAPI 规范自动生成 TypeScript 类型：
+~~使用 `openapi-typescript` 从 FastAPI 的 OpenAPI 规范自动生成 TypeScript 类型：~~
 
-```
-FastAPI  →  GET /openapi.json  →  openapi-typescript  →  types/schema.ts
-```
+**实现中并未使用 `openapi-typescript`。** 当前 API 类型（`SessionResponse`, `HistoryMessage`, `SseEvent` 等）直接在 `ui/src/lib/api.ts` 中手写定义，理由是：
 
-- 后端新增字段 → 重新生成类型 → TypeScript 编译检查所有调用点
-- 消除前后端类型不同步的问题
-- 无需手写任何 API 类型定义
+- 当前后端在 `/docs` 路径提供了 Swagger UI，但 `openapi.json` 路径不定，维护自动生成脚本的成本超过了手动维护少量类型定义的成本
+- API 接口层当前较稳定，类型变更频率低
+- 如后续 API 大幅扩张，可重新评估是否引入 `openapi-typescript`
 
 ## 组件树结构
 
 ```
 App (RouterProvider)
 └── Routes
-    └── Layout Route            # 布局骨架: Sidebar + Outlet
-        ├── Sidebar             # 侧边栏导航
-        │   ├── NavLinks        # 路由导航链接列表
-        │   └── SessionList     # 会话列表
-        │       └── SessionItem *n
+    └── Layout Route (AppShell)   # 布局骨架: Sidebar + Outlet
+        ├── ErrorBoundary         # React 错误边界
+        ├── ToastContainer        # 全局 Toast 通知
         │
-        └── Outlet              # 子路由渲染出口
-            ├── /chat           →  ChatView
+        ├── Sidebar               # 侧边栏导航 + 会话列表（内联）
+        │   ├── NavLinks          # 路由导航链接列表
+        │   ├── NewSessionDialog  # 新建会话弹窗
+        │   ├── ConfirmDialog     # 删除确认弹窗
+        │   └── 会话列表（内联，无独立 SessionList/SessionItem 组件）
+        │
+        └── Outlet                # 子路由渲染出口
+            ├── /chat             →  ChatPage
+            │   ├── ChatHeader
+            │   ├── ConnectionStatusBanner
             │   ├── MessageList
             │   │   └── MessageBubble *n
-            │   │       ├── StreamMessage
-            │   │       ├── ReasoningBlock
-            │   │       ├── ToolCallCard
-            │   │       └── ToolResultBlock
-            │   └── InputBar
+            │   │       └── StreamMessage
+            │   │           ├── ReasoningBlock
+            │   │           ├── ToolCallCard / ToolResultBlock
+            │   │           └── react-markdown 渲染
+            │   ├── InputBar
+            │   └── ScrollToBottomButton
             │
-            ├── /settings       →  SettingsView
-            │   ├── /settings/provider
-            │   └── /settings/tools
+            ├── /settings         →  SettingsPage
+            │   ├── /settings/provider  →  ProviderSettingsPage（mock 数据）
+            │   └── /settings/tools     →  ToolSettingsPage（本地 toggle 状态）
             │
-            └── [future] /mcp   →  MCPView
-                /skills         →  SkillsView
-                /rag            →  RagView
-                /memory         →  MemoryView
+            └── [future] /mcp     →  MCPView
+                /skills           →  SkillsView
+                /rag              →  RagView
+                /memory           →  MemoryView
 ```
 
 ## 数据流
