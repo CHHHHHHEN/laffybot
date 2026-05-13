@@ -11,6 +11,8 @@ from laffybot.agent.cancellation import CancellationToken, CancelledError
 from laffybot.agent.events import SSEEvent, event_error
 from laffybot.agent.runner import AgentRunner, AgentRunSpec
 from laffybot.agent.tools.registry import ToolRegistry
+from laffybot.config import ContextConfig
+from laffybot.context import ContextBuilder, SimpleContextBuilder
 from laffybot.providers.base import BaseProvider
 from laffybot.session.errors import (
     SessionBusyError,
@@ -29,12 +31,21 @@ class SessionManager:
         store: SessionStore,
         tool_registry: ToolRegistry,
         provider_factory: Callable[[str], BaseProvider],
+        context_config: ContextConfig | None = None,
+        context_builder: ContextBuilder | None = None,
     ) -> None:
         self.store = store
         self.tool_registry = tool_registry
         self.provider_factory = provider_factory
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
+
+        # Initialize context builder
+        if context_builder is not None:
+            self._context_builder = context_builder
+        else:
+            config = context_config or ContextConfig()
+            self._context_builder = SimpleContextBuilder(config)
 
     def _lock_for(self, session_id: str) -> asyncio.Lock:
         lock = self._locks.get(session_id)
@@ -127,6 +138,9 @@ class SessionManager:
                     max_iterations=session.max_iterations,
                 )
 
+                # Track usage for token persistence
+                accumulated_usage: dict[str, int] = {}
+
                 async for event in runner.run_stream(
                     spec,
                     session_id=session_id,
@@ -146,11 +160,19 @@ class SessionManager:
                             response_status = "error"
                         else:
                             response_status = "idle"
+                        # Extract usage from done event
+                        if event.usage:
+                            accumulated_usage = event.usage
                         if response_status == "idle" and assistant_chunks:
+                            # Extract token counts from usage
+                            input_tokens = accumulated_usage.get("prompt_tokens")
+                            output_tokens = accumulated_usage.get("completion_tokens")
                             await self.store.save_message(
                                 session_id,
                                 "assistant",
                                 "".join(assistant_chunks),
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens,
                             )
                         await self.store.update_session_status(
                             session_id,
@@ -194,12 +216,22 @@ class SessionManager:
         session: SessionInfo,
         current_message: str,
     ) -> list[dict[str, Any]]:
-        messages: list[dict[str, Any]] = []
-        if session.system_prompt:
-            messages.append({"role": "system", "content": session.system_prompt})
-        messages.extend(await self.store.get_messages(session.session_id))
-        messages.append({"role": "user", "content": current_message})
-        return messages
+        """Build complete message context using ContextBuilder.
+
+        Delegates to ContextBuilder for:
+        - System prompt assembly
+        - History loading
+        - Capacity control
+        """
+        history = await self.store.get_messages(session.session_id)
+        return await self._context_builder.build_messages(
+            session_id=session.session_id,
+            system_prompt=session.system_prompt,
+            history=history,
+            current_message=current_message,
+            model=session.model,
+            created_at=session.created_at,
+        )
 
     @staticmethod
     def _extract_error_message(error: dict[str, Any] | None) -> str | None:

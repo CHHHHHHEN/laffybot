@@ -12,6 +12,7 @@ dependencies = [
     "httpx",
     "json-repair",
     "aiosqlite",
+    "jinja2",
 ]
 
 [project.optional-dependencies]

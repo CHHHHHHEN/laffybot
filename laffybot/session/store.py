@@ -51,11 +51,18 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     metadata TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+"""
+
+_MIGRATION_SQL = """
+-- Migration: Add token columns to messages table (idempotent)
+-- SQLite doesn't support IF NOT EXISTS for columns, so we check first
 """
 
 
@@ -107,6 +114,8 @@ class SessionStore(ABC):
         role: MessageRole,
         content: str,
         metadata: dict[str, Any] | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> SessionMessage:
         raise NotImplementedError
 
@@ -145,7 +154,21 @@ class SQLiteStore(SessionStore):
             await self._db.execute("PRAGMA foreign_keys = ON")
             await self._db.executescript(_SCHEMA_SQL)
             await self._db.commit()
+            # Run migrations
+            await self._run_migrations(self._db)
         return self._db
+
+    async def _run_migrations(self, db: aiosqlite.Connection) -> None:
+        """Run database migrations for schema updates."""
+        # Migration 1: Add token columns to messages table
+        async with db.execute("PRAGMA table_info(messages)") as cursor:
+            columns = {row["name"] for row in await cursor.fetchall()}
+
+        if "input_tokens" not in columns:
+            await db.execute("ALTER TABLE messages ADD COLUMN input_tokens INTEGER")
+        if "output_tokens" not in columns:
+            await db.execute("ALTER TABLE messages ADD COLUMN output_tokens INTEGER")
+        await db.commit()
 
     @staticmethod
     def _now() -> datetime:
@@ -184,6 +207,11 @@ class SQLiteStore(SessionStore):
         metadata = row["metadata"]
         if metadata:
             message["metadata"] = json.loads(metadata)
+        # Include token counts if available
+        if row["input_tokens"] is not None:
+            message["input_tokens"] = row["input_tokens"]
+        if row["output_tokens"] is not None:
+            message["output_tokens"] = row["output_tokens"]
         return message
 
     async def create_session(
@@ -297,6 +325,8 @@ class SQLiteStore(SessionStore):
         role: MessageRole,
         content: str,
         metadata: dict[str, Any] | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> SessionMessage:
         db = await self._ensure_db()
         timestamp = self._format_dt(self._now())
@@ -305,10 +335,10 @@ class SQLiteStore(SessionStore):
         try:
             await db.execute(
                 """
-                INSERT INTO messages (session_id, role, content, timestamp, metadata)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO messages (session_id, role, content, timestamp, metadata, input_tokens, output_tokens)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, role, content, timestamp, metadata_json),
+                (session_id, role, content, timestamp, metadata_json, input_tokens, output_tokens),
             )
             await db.execute(
                 """
@@ -325,12 +355,18 @@ class SQLiteStore(SessionStore):
         except Exception:
             await db.rollback()
             raise
-        return {
+        result: SessionMessage = {
             "role": role,
             "content": content,
             "timestamp": timestamp,
-            **({"metadata": metadata} if metadata is not None else {}),
         }
+        if metadata is not None:
+            result["metadata"] = metadata
+        if input_tokens is not None:
+            result["input_tokens"] = input_tokens
+        if output_tokens is not None:
+            result["output_tokens"] = output_tokens
+        return result
 
     async def get_messages(
         self,
@@ -345,7 +381,7 @@ class SQLiteStore(SessionStore):
             clauses.append("timestamp < ?")
             params.append(self._format_dt(before))
         query = (
-            "SELECT role, content, timestamp, metadata FROM messages "
+            "SELECT role, content, timestamp, metadata, input_tokens, output_tokens FROM messages "
             f"WHERE {' AND '.join(clauses)} ORDER BY timestamp ASC, id ASC LIMIT ?"
         )
         async with db.execute(query, [*params, limit]) as cursor:
