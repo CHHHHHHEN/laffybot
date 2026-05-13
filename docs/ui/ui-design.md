@@ -2,7 +2,7 @@
 
 > **文档范围说明**：本文档聚焦于 Laffybot UI 的交互设计、组件职责和数据流。
 >
-> **配套文档**：视觉规范（色彩、字体、间距、动画等）见 `ui-design-spec.md`。
+> **配套文档**：视觉规范（色彩、字体、间距、动画等）见 `ui-design-spec.md`，技术选型与架构决策见 `ui-tech-selection.md`。
 >
 > **适用范围**：本文档讨论的是 Web UI 的交互设计，不涉及具体实现细节和代码示例。
 
@@ -161,7 +161,6 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 | `InputBar` | 输入与发送/取消 | isStreaming, disabled | onSubmit, onCancel |
 | `ProviderSettings` | 提供商配置管理 | providers[] | onAdd, onEdit, onDelete |
 | `ToolSettings` | 工具管理 | tools[] | onToggle, onConfigure |
-
 | `ScrollToBottomButton` | 用户上滚后出现的"回到最新"浮动按钮 | visible, onClick | 无 |
 | `ConnectionStatusBanner` | 连接状态提示横幅 | status (connected/disconnected/reconnecting), message | 无 |
 | `Toast` | 瞬态通知容器 | toasts[] | onDismiss |
@@ -203,6 +202,8 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 
 ## 数据流
 
+> API 端点定义和 SSE 事件格式详见 `api.md`，UI 与 API 的映射关系见 `ui-api-interface.md`。本节仅描述 UI 侧的事件处理行为。
+
 ### 消息发送与 SSE 流式渲染
 
 ```
@@ -212,10 +213,10 @@ InputBar 提交
 创建用户消息 → 立即追加到 MessageList（乐观更新）
     │
     ▼
-POST /sessions/{id}/messages → 建立 SSE 连接
+POST /api/v1/sessions/{id}/messages → 建立 SSE 连接
     │
     ▼
-    开始接收 SSE 事件流
+    开始接收 SSE 事件流（事件格式详见 api.md）
     │
     ├── session_start → 记录 request_id，标记会话为 busy
     ├── content      → 追加 token 到当前助手消息的文本缓冲区
