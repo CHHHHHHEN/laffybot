@@ -43,6 +43,9 @@ dev = [
 url = "https://mirrors.ustc.edu.cn/pypi/simple"
 default = true
 
+[tool.ruff]
+exclude = ["third-party"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 ignore = ["E501"]
@@ -60,6 +63,7 @@ python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
+exclude = ["third-party/"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
