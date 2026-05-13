@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 import uvicorn
@@ -13,6 +14,14 @@ from laffybot.crypto import validate_encryption_key
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Laffybot API server")
+    parser.add_argument(
+        "--config",
+        default="config.json",
+        help="Path to configuration file (default: config.json)",
+    )
+    args = parser.parse_args()
+
     logger.remove()
     logger.add(
         sys.stderr,
@@ -27,7 +36,7 @@ def main() -> None:
         logger.error("Startup failed: {}", exc)
         sys.exit(1)
 
-    config = ApiConfig()
+    config = ApiConfig.from_json(args.config)
     logger.info("Starting server on {}:{}", config.host, config.port)
     uvicorn.run(
         app,

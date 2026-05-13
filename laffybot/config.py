@@ -1,9 +1,11 @@
 """Application configuration."""
 
+from __future__ import annotations
+
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
 
 
 class ContextConfig(BaseModel):
@@ -44,7 +46,7 @@ class ContextConfig(BaseModel):
     )
 
 
-class ApiConfig(BaseSettings):
+class ApiConfig(BaseModel):
     """HTTP API configuration."""
 
     database_path: str = Field(
@@ -61,3 +63,9 @@ class ApiConfig(BaseSettings):
         default=False,
         description="Allow credentialed CORS requests.",
     )
+
+    @classmethod
+    def from_json(cls, path: str) -> ApiConfig:
+        with open(path) as f:
+            data = json.load(f)
+        return cls(**data)
