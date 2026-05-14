@@ -67,13 +67,13 @@ export function ChatPage() {
           updateSessionStatus(sessionId!, 'busy')
           break
         case 'content':
-          chat.appendToStreamBuffer('text', event.text ?? '')
+          chat.appendContent(event.text ?? '')
           break
         case 'reasoning':
-          chat.appendToStreamBuffer('reasoning', event.text ?? '')
+          chat.appendReasoning(event.text ?? '')
           break
         case 'tool_call':
-          chat.addToolCallToBuffer({
+          chat.addToolCall({
             tool_call_id: event.tool_call_id ?? '',
             name: event.name ?? '',
             arguments: (event.arguments as Record<string, unknown>) ?? {},
@@ -81,7 +81,7 @@ export function ChatPage() {
           })
           break
         case 'tool_result':
-          chat.updateToolCallInBuffer(event.tool_call_id ?? '', {
+          chat.updateToolCallInMessage(event.tool_call_id ?? '', {
             status: event.success ? 'completed' : 'failed',
             result: event.result,
             success: event.success,
@@ -132,6 +132,7 @@ export function ChatPage() {
       abortRef.current = abort
 
       chatStoreActions.setIsStreaming(true)
+      chatStoreActions.initStreamBuffer()
 
       chatStoreActions.appendMessage({
         id: crypto.randomUUID(),
@@ -249,4 +250,5 @@ const chatStoreActions = {
   setConnectionStatus: (s: ReturnType<typeof useChatStore.getState>['connectionStatus']) =>
     useChatStore.getState().setConnectionStatus(s),
   setActiveRequestId: (id: string | null) => useChatStore.getState().setActiveRequestId(id),
+  initStreamBuffer: () => useChatStore.getState().initStreamBuffer(),
 }

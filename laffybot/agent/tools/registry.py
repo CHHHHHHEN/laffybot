@@ -17,16 +17,19 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._disabled: set[str] = set()
         self._cached_definitions: list[dict[str, Any]] | None = None
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
         self._tools[tool.name] = tool
+        self._disabled.discard(tool.name)
         self._cached_definitions = None
 
     def unregister(self, name: str) -> None:
         """Unregister a tool by name."""
         self._tools.pop(name, None)
+        self._disabled.discard(name)
         self._cached_definitions = None
 
     def get(self, name: str) -> Tool | None:
@@ -36,6 +39,24 @@ class ToolRegistry:
     def has(self, name: str) -> bool:
         """Check if a tool is registered."""
         return name in self._tools
+
+    def disable(self, name: str) -> None:
+        """Disable a tool so it won't be sent to the LLM."""
+        if name not in self._tools:
+            raise ToolError(
+                f"Tool '{name}' not found", code="TOOL_NOT_FOUND", tool_name=name
+            )
+        self._disabled.add(name)
+        self._cached_definitions = None
+
+    def enable(self, name: str) -> None:
+        """Enable a previously disabled tool."""
+        self._disabled.discard(name)
+        self._cached_definitions = None
+
+    def is_enabled(self, name: str) -> bool:
+        """Check if a tool is currently enabled."""
+        return name not in self._disabled
 
     @staticmethod
     def _schema_name(schema: dict[str, Any]) -> str:
@@ -58,7 +79,11 @@ class ToolRegistry:
         if self._cached_definitions is not None:
             return self._cached_definitions
 
-        definitions = [tool.to_schema() for tool in self._tools.values()]
+        definitions = [
+            tool.to_schema()
+            for name, tool in self._tools.items()
+            if name not in self._disabled
+        ]
         builtins: list[dict[str, Any]] = []
         mcp_tools: list[dict[str, Any]] = []
         for schema in definitions:

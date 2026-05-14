@@ -300,14 +300,27 @@ export function checkHealth() {
 
 /* ---- Tools API ---- */
 
-export interface ToolInfo {
+export interface ToolInfoWithStatus {
   name: string
   description: string
   read_only: boolean
+  enabled: boolean
 }
 
 export function listTools() {
-  return apiRequest<ToolInfo[]>('/api/v1/tools')
+  return apiRequest<ToolInfoWithStatus[]>('/api/v1/tools')
+}
+
+export function enableTool(name: string) {
+  return apiRequest<{ name: string; enabled: boolean }>(`/api/v1/tools/${name}/enable`, {
+    method: 'POST',
+  })
+}
+
+export function disableTool(name: string) {
+  return apiRequest<{ name: string; enabled: boolean }>(`/api/v1/tools/${name}/disable`, {
+    method: 'POST',
+  })
 }
 
 /* ---- Types ---- */

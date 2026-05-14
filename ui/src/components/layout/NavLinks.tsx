@@ -23,7 +23,7 @@ export function NavLinks() {
           }
         >
           <link.icon size={20} />
-          <span>link.label</span>
+          <span>{link.label}</span>
         </NavLink>
       ))}
     </nav>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +15,12 @@ from loguru import logger
 
 from laffybot import __version__
 from laffybot.agent.tools.errors import ToolError
+from laffybot.agent.tools.filesystem import (
+    EditFileTool,
+    ListDirTool,
+    ReadFileTool,
+    WriteFileTool,
+)
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
     build_provider_store,
@@ -40,6 +47,10 @@ def create_app(
     store_obj = store or build_store(config)
     provider_store_obj = provider_store or build_provider_store(config)
     tool_registry_obj = tool_registry or ToolRegistry()
+    tool_registry_obj.register(ReadFileTool(workspace=Path.cwd()))
+    tool_registry_obj.register(WriteFileTool(workspace=Path.cwd()))
+    tool_registry_obj.register(EditFileTool(workspace=Path.cwd()))
+    tool_registry_obj.register(ListDirTool(workspace=Path.cwd()))
     session_manager_obj = build_session_manager(
         store=store_obj,
         provider_store=provider_store_obj,

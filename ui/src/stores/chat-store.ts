@@ -26,26 +26,24 @@ export interface Message {
   isError?: boolean
 }
 
-interface StreamBuffer {
-  text: string
-  reasoning: string
-  toolCalls: ToolCall[]
-}
+let contentBuffer = ''
+let reasoningBuffer = ''
 
 interface ChatState {
   messages: Message[]
   connectionStatus: ConnectionStatus
   isStreaming: boolean
-  streamBuffer: StreamBuffer
   activeRequestId: string | null
   setMessages: (messages: Message[]) => void
   appendMessage: (message: Message) => void
   updateLastMessage: (updates: Partial<Message>) => void
   setConnectionStatus: (status: ConnectionStatus) => void
   setIsStreaming: (streaming: boolean) => void
-  appendToStreamBuffer: (type: 'text' | 'reasoning', text: string) => void
-  addToolCallToBuffer: (toolCall: ToolCall) => void
-  updateToolCallInBuffer: (toolCallId: string, updates: Partial<ToolCall>) => void
+  initStreamBuffer: () => void
+  appendContent: (text: string) => void
+  appendReasoning: (text: string) => void
+  addToolCall: (toolCall: ToolCall) => void
+  updateToolCallInMessage: (toolCallId: string, updates: Partial<ToolCall>) => void
   flushStreamBuffer: () => void
   setActiveRequestId: (id: string | null) => void
   clearMessages: () => void
@@ -55,7 +53,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   connectionStatus: 'disconnected',
   isStreaming: false,
-  streamBuffer: { text: '', reasoning: '', toolCalls: [] },
   activeRequestId: null,
 
   setMessages: (messages) => set({ messages }),
@@ -74,68 +71,64 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setConnectionStatus: (status) => set({ connectionStatus: status }),
   setIsStreaming: (streaming) => set({ isStreaming: streaming }),
 
-  appendToStreamBuffer: (type, text) =>
-    set((state) => ({
-      streamBuffer: {
-        ...state.streamBuffer,
-        [type === 'text' ? 'text' : 'reasoning']:
-          state.streamBuffer[type === 'text' ? 'text' : 'reasoning'] + text,
-      },
-    })),
+  initStreamBuffer: () => {
+    contentBuffer = ''
+    reasoningBuffer = ''
+  },
 
-  addToolCallToBuffer: (toolCall) =>
-    set((state) => ({
-      streamBuffer: {
-        ...state.streamBuffer,
-        toolCalls: [...state.streamBuffer.toolCalls, toolCall],
-      },
-    })),
+  appendContent: (text) => {
+    contentBuffer += text
+    get().updateLastMessage({ content: contentBuffer })
+  },
 
-  updateToolCallInBuffer: (toolCallId, updates) =>
-    set((state) => ({
-      streamBuffer: {
-        ...state.streamBuffer,
-        toolCalls: state.streamBuffer.toolCalls.map((tc) =>
+  appendReasoning: (text) => {
+    reasoningBuffer += text
+    get().updateLastMessage({ reasoning: reasoningBuffer })
+  },
+
+  addToolCall: (toolCall) =>
+    set((state) => {
+      const messages = [...state.messages]
+      if (messages.length === 0) return state
+      const last = messages[messages.length - 1]
+      messages[messages.length - 1] = {
+        ...last,
+        tool_calls: [...(last.tool_calls || []), toolCall],
+      }
+      return { messages }
+    }),
+
+  updateToolCallInMessage: (toolCallId, updates) =>
+    set((state) => {
+      const messages = [...state.messages]
+      if (messages.length === 0) return state
+      const last = messages[messages.length - 1]
+      messages[messages.length - 1] = {
+        ...last,
+        tool_calls: (last.tool_calls || []).map((tc) =>
           tc.tool_call_id === toolCallId ? { ...tc, ...updates } : tc
         ),
-      },
-    })),
+      }
+      return { messages }
+    }),
 
   flushStreamBuffer: () => {
-    const { streamBuffer, messages } = get()
-    if (!streamBuffer.text && streamBuffer.toolCalls.length === 0) return
-
-    const messagesCopy = [...messages]
-    const lastMsg = messagesCopy[messagesCopy.length - 1]
-
-    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
-      messagesCopy[messagesCopy.length - 1] = {
-        ...lastMsg,
-        content: streamBuffer.text,
-        reasoning: streamBuffer.reasoning || undefined,
-        tool_calls: streamBuffer.toolCalls.length > 0 ? streamBuffer.toolCalls : undefined,
-        isStreaming: false,
+    set((state) => {
+      const messages = [...state.messages]
+      if (messages.length === 0) return state
+      const last = messages[messages.length - 1]
+      if (last.role === 'assistant' && last.isStreaming) {
+        messages[messages.length - 1] = { ...last, isStreaming: false }
+        return { messages }
       }
-      set({
-        messages: messagesCopy,
-        streamBuffer: { text: '', reasoning: '', toolCalls: [] },
-      })
-    } else {
-      const message: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: streamBuffer.text,
-        timestamp: new Date().toISOString(),
-        reasoning: streamBuffer.reasoning || undefined,
-        tool_calls: streamBuffer.toolCalls.length > 0 ? streamBuffer.toolCalls : undefined,
-      }
-      set((state) => ({
-        messages: [...state.messages, message],
-        streamBuffer: { text: '', reasoning: '', toolCalls: [] },
-      }))
-    }
+      return state
+    })
   },
 
   setActiveRequestId: (id) => set({ activeRequestId: id }),
-  clearMessages: () => set({ messages: [], streamBuffer: { text: '', reasoning: '', toolCalls: [] } }),
+  clearMessages: () => {
+    contentBuffer = ''
+    reasoningBuffer = ''
+    set({ messages: [] })
+  },
 }))

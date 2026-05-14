@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface ReasoningBlockProps {
@@ -7,7 +7,15 @@ interface ReasoningBlockProps {
 }
 
 export function ReasoningBlock({ text, isStreaming }: ReasoningBlockProps) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
+  const wasStreamingRef = useRef(isStreaming)
+
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming && text) {
+      setOpen(false)
+    }
+    wasStreamingRef.current = !!isStreaming
+  }, [isStreaming, text])
 
   if (!text) return null
 

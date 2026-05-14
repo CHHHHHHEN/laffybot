@@ -27,33 +27,37 @@ export function StreamMessage({ text, reasoning, toolCalls, isStreaming }: Strea
 
       {text && (
         <div className="prose prose-sm max-w-none text-[var(--color-text-primary)]">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              pre: ({ children }) => (
-                <pre className="bg-[var(--color-secondary-bg)] border border-[var(--color-border)] rounded-md p-3 overflow-x-auto text-code font-mono">
-                  {children}
-                </pre>
-              ),
-              code: ({ children, ...props }) => {
-                const isInline = !props.className
-                if (isInline) {
+          {isStreaming ? (
+            <div className="whitespace-pre-wrap">{text}</div>
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                pre: ({ children }) => (
+                  <pre className="bg-[var(--color-secondary-bg)] border border-[var(--color-border)] rounded-md p-3 overflow-x-auto text-code font-mono">
+                    {children}
+                  </pre>
+                ),
+                code: ({ children, ...props }) => {
+                  const isInline = !props.className
+                  if (isInline) {
+                    return (
+                      <code className="bg-[var(--color-secondary-bg)] text-[var(--color-text-primary)] rounded-sm px-1 py-0.5 text-code font-mono">
+                        {children}
+                      </code>
+                    )
+                  }
                   return (
-                    <code className="bg-[var(--color-secondary-bg)] text-[var(--color-text-primary)] rounded-sm px-1 py-0.5 text-code font-mono">
+                    <code className="text-code font-mono" {...props}>
                       {children}
                     </code>
                   )
-                }
-                return (
-                  <code className="text-code font-mono" {...props}>
-                    {children}
-                  </code>
-                )
-              },
-            }}
-          >
-            {text}
-          </ReactMarkdown>
+                },
+              }}
+            >
+              {text}
+            </ReactMarkdown>
+          )}
         </div>
       )}
 
