@@ -9,11 +9,13 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "check": "pnpm run typecheck && pnpm run lint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.10",
     "@tanstack/react-query-devtools": "^5.100.10",
+    "@tauri-apps/api": "^2.11.0",
     "lucide-react": "^1.14.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -26,6 +28,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
+    "@tauri-apps/cli": "^2.11.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
