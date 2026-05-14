@@ -16,4 +16,4 @@
 
 ## Rules
 - Before write documents, read `docs/readme-document-content-guidelines.md`
-- Read `README.md` and `docs` to know basic information about project.
+- Read `README.md` and `docs` to know basic information about project before launch subagents.
