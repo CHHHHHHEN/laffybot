@@ -2,14 +2,14 @@
 
 > **文档范围说明**：本文档聚焦于 Laffybot UI 的技术选型依据与架构决策。
 >
-> **配套文档**：视觉规范与交互模式见 `ui-design-spec.md`，组件设计与数据流见 `ui-design.md`。
+> **配套文档**：视觉规范与交互模式见 `ui-design-spec.md`，组件设计与数据流见 `ui-design.md`，桌面端设计见 `desktop-design.md`。
 >
 > **本文档不包含以下内容**：
 > - 具体实现细节、代码示例和 API 使用方式
 > - 开发环境搭建步骤和构建流程
 > - 测试策略和测试用例
 >
-> **适用范围**：本文档讨论的是 Web UI，不涉及 CLI 或其他客户端形式。
+> **适用范围**：本文档讨论的是 Web UI，桌面端相关内容见 `desktop-design.md`。
 
 ## 实现状态
 
@@ -23,7 +23,7 @@
 | Agent 展示组件 | ✅ 已完成 | StreamMessage、ReasoningBlock、ToolCallCard、ToolResultBlock、ScrollToBottomButton、SessionStatusBadge |
 | 设置面板 | ✅ 已完成 | 提供商配置对接真实 API；工具管理对接 `GET /api/v1/tools`（只读列表） |
 | SSE 集成 | ✅ 已完成 | 基于 fetch + ReadableStream 的 POST-based SSE 实现 |
-| Tauri 桌面端 | 📅 规划中 | 将来阶段 |
+| Tauri 桌面端 | ✅ 已完成 | 详见 `desktop-design.md`、`tauri-impl-plan.md` |
 
 ## 动机
 
@@ -142,13 +142,15 @@ React 的选择基于三个核心考量：
 
 ### 桌面端策略
 
-UI 使用标准 Web API，构建产物为纯静态文件。Tauri 直接加载 `dist/` 目录作为 WebView 内容，无需任何前端代码改动：
+UI 使用标准 Web API，构建产物为纯静态文件。Tauri v2 直接加载 `dist/` 目录作为 WebView 内容，无需任何前端代码改动：
 
 ```
-Vite build  →  dist/  ──→  Tauri (desktop)
-                          ├── 开发阶段: cargo tauri dev
-                          └── 构建阶段: cargo tauri build
+Vite build  →  dist/  ──→  Tauri v2 (desktop)
+                           ├── 开发阶段: pnpm tauri dev
+                           └── 构建阶段: pnpm tauri build
 ```
+
+桌面端的详细架构设计、安全模型、扩展规划见 `desktop-design.md`。
 
 ### PWA 支持
 
@@ -244,7 +246,7 @@ User Input  →  InputBar
 | 场景 | 支持方式 | 影响范围 |
 |------|----------|----------|
 | 新增服务面板 (MCP/Skill/RAG/Memory) | 新增组件 + 路由表注册 + 导航链接 | 仅新增文件 + 1 条路由声明 |
-| 桌面端 (Tauri) | 直接加载 dist/ | 新增 src-tauri/ 目录 |
+| 桌面端 (Tauri v2) | 直接加载 dist/，详见 `desktop-design.md` | 新增 src-tauri/ 目录 |
 | 用户认证 | api.ts 新增请求拦截器 | 仅 lib/api.ts |
 | 主题定制 | Tailwind CSS 变量覆盖 + shadcn/ui CSS 变量 | 全局样式表 |
 | 国际化 | react-i18next Provider 包裹 | 新增 locales/ + 组件包裹 |
