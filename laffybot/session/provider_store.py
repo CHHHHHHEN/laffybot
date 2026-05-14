@@ -254,7 +254,7 @@ class SQLiteProviderStore(ProviderStore):
         if base_url is not None:
             fields.append("base_url = ?")
             params.append(base_url)
-        if api_key is not None:
+        if api_key:
             fields.append("api_key_encrypted = ?")
             params.append(encrypt_api_key(api_key))
         if extra_headers is not None:
