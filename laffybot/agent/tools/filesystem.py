@@ -6,14 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field
+
 from laffybot.agent.tools.base import Tool, tool_parameters
 from laffybot.agent.tools.file_state import FileStates, _hash_file, current_file_states
-from laffybot.agent.tools.schema import (
-    BooleanSchema,
-    IntegerSchema,
-    StringSchema,
-    tool_parameters_schema,
-)
 
 _FS_WORKSPACE_BOUNDARY_NOTE = (
     " (this is a hard policy boundary, not a transient failure; "
@@ -77,7 +73,9 @@ class _FsTool(Tool):
         return current_file_states(self._fallback_file_states)
 
     def _resolve(self, path: str) -> Path:
-        return _resolve_path(path, self._workspace, self._allowed_dir, self._extra_allowed_dirs)
+        return _resolve_path(
+            path, self._workspace, self._allowed_dir, self._extra_allowed_dirs
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -85,17 +83,71 @@ class _FsTool(Tool):
 # ---------------------------------------------------------------------------
 
 
-_BLOCKED_DEVICE_PATHS = frozenset({
-    "/dev/zero", "/dev/random", "/dev/urandom", "/dev/full",
-    "/dev/stdin", "/dev/stdout", "/dev/stderr",
-    "/dev/tty", "/dev/console",
-    "/dev/fd/0", "/dev/fd/1", "/dev/fd/2",
-})
+# ── Pydantic parameter models ──────────────────────────────────────────────
+
+
+class _ReadFileParams(BaseModel):
+    path: str = Field(description="The file path to read")
+    offset: int = Field(
+        default=1,
+        ge=1,
+        description="Line number to start reading from (1-indexed, default 1)",
+    )
+    limit: int = Field(
+        default=2000, ge=1, description="Maximum number of lines to read (default 2000)"
+    )
+    pages: str | None = Field(
+        default=None,
+        description="Page range for PDF files, e.g. '1-5' (default: all, max 20 pages)",
+    )
+
+
+class _WriteFileParams(BaseModel):
+    path: str = Field(description="The file path to write to")
+    content: str = Field(description="The content to write")
+
+
+class _EditFileParams(BaseModel):
+    path: str = Field(description="The file path to edit")
+    old_text: str = Field(description="The text to find and replace")
+    new_text: str = Field(description="The text to replace with")
+    replace_all: bool = Field(
+        default=False, description="Replace all occurrences (default false)"
+    )
+
+
+class _ListDirParams(BaseModel):
+    path: str = Field(description="The directory path to list")
+    recursive: bool = Field(
+        default=False, description="Recursively list all files (default false)"
+    )
+    max_entries: int = Field(
+        default=200, ge=1, description="Maximum entries to return (default 200)"
+    )
+
+
+_BLOCKED_DEVICE_PATHS = frozenset(
+    {
+        "/dev/zero",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/full",
+        "/dev/stdin",
+        "/dev/stdout",
+        "/dev/stderr",
+        "/dev/tty",
+        "/dev/console",
+        "/dev/fd/0",
+        "/dev/fd/1",
+        "/dev/fd/2",
+    }
+)
 
 
 def _is_blocked_device(path: str | Path) -> bool:
     """Check if path is a blocked device that could hang or produce infinite output."""
     import re
+
     raw = str(path)
 
     # Resolve symlinks to check the actual target
@@ -108,7 +160,9 @@ def _is_blocked_device(path: str | Path) -> bool:
         return True
     if re.match(r"/proc/\d+/fd/[012]$", raw) or re.match(r"/proc/self/fd/[012]$", raw):
         return True
-    if re.match(r"/proc/\d+/fd/[012]$", resolved) or re.match(r"/proc/self/fd/[012]$", resolved):
+    if re.match(r"/proc/\d+/fd/[012]$", resolved) or re.match(
+        r"/proc/self/fd/[012]$", resolved
+    ):
         return True
 
     # Check if resolved path starts with /dev/ (covers symlinks to devices)
@@ -128,23 +182,7 @@ def _parse_page_range(pages: str, total: int) -> tuple[int, int]:
     return max(0, start - 1), min(end - 1, total - 1)
 
 
-@tool_parameters(
-    tool_parameters_schema(
-        path=StringSchema("The file path to read"),
-        offset=IntegerSchema(
-            1,
-            description="Line number to start reading from (1-indexed, default 1)",
-            minimum=1,
-        ),
-        limit=IntegerSchema(
-            2000,
-            description="Maximum number of lines to read (default 2000)",
-            minimum=1,
-        ),
-        pages=StringSchema("Page range for PDF files, e.g. '1-5' (default: all, max 20 pages)"),
-        required=["path"],
-    )
-)
+@tool_parameters(_ReadFileParams)
 class ReadFileTool(_FsTool):
     """Read file contents with optional line-based pagination."""
 
@@ -171,7 +209,14 @@ class ReadFileTool(_FsTool):
     def read_only(self) -> bool:
         return True
 
-    async def execute(self, path: str | None = None, offset: int = 1, limit: int | None = None, pages: str | None = None, **kwargs: Any) -> Any:
+    async def execute(
+        self,
+        path: str | None = None,
+        offset: int = 1,
+        limit: int | None = None,
+        pages: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
         try:
             if not path:
                 return "Error reading file: Unknown path"
@@ -203,11 +248,18 @@ class ReadFileTool(_FsTool):
                 current_mtime = os.path.getmtime(fp)
             except OSError:
                 current_mtime = 0.0
-            if entry and entry.can_dedup and entry.offset == offset and entry.limit == limit:
+            if (
+                entry
+                and entry.can_dedup
+                and entry.offset == offset
+                and entry.limit == limit
+            ):
                 if current_mtime != entry.mtime:
                     # File was modified externally - force full read and mark as not dedupable
                     entry.can_dedup = False
-                    self._file_states.record_read(fp, offset=offset, limit=limit)  # Update state with new mtime
+                    self._file_states.record_read(
+                        fp, offset=offset, limit=limit
+                    )  # Update state with new mtime
                     # Continue to read full content (don't return dedup message)
                 else:
                     # File unchanged - return dedup message
@@ -249,7 +301,10 @@ class ReadFileTool(_FsTool):
 
             start = offset - 1
             end = min(start + (limit or self._DEFAULT_LIMIT), total)
-            numbered = [f"{start + i + 1}| {line}" for i, line in enumerate(all_lines[start:end])]
+            numbered = [
+                f"{start + i + 1}| {line}"
+                for i, line in enumerate(all_lines[start:end])
+            ]
             result = "\n".join(numbered)
 
             if len(result) > self._MAX_CHARS:
@@ -277,7 +332,9 @@ class ReadFileTool(_FsTool):
         try:
             import fitz  # type: ignore[import-not-found]  # pymupdf
         except ImportError:
-            return "Error: PDF reading requires pymupdf. Install with: pip install pymupdf"
+            return (
+                "Error: PDF reading requires pymupdf. Install with: pip install pymupdf"
+            )
 
         try:
             doc = fitz.open(str(fp))
@@ -316,7 +373,9 @@ class ReadFileTool(_FsTool):
         if end < total_pages - 1:
             result += f"\n\n(Showing pages {start + 1}-{end + 1} of {total_pages}. Use pages='{end + 2}-{min(end + 1 + self._MAX_PDF_PAGES, total_pages)}' to continue.)"
         if len(result) > self._MAX_CHARS:
-            result = result[:self._MAX_CHARS] + "\n\n(PDF text truncated at ~128K chars)"
+            result = (
+                result[: self._MAX_CHARS] + "\n\n(PDF text truncated at ~128K chars)"
+            )
         return result
 
 
@@ -325,13 +384,7 @@ class ReadFileTool(_FsTool):
 # ---------------------------------------------------------------------------
 
 
-@tool_parameters(
-    tool_parameters_schema(
-        path=StringSchema("The file path to write to"),
-        content=StringSchema("The content to write"),
-        required=["path", "content"],
-    )
-)
+@tool_parameters(_WriteFileParams)
 class WriteFileTool(_FsTool):
     """Write content to a file."""
 
@@ -347,7 +400,9 @@ class WriteFileTool(_FsTool):
             "For partial edits, prefer edit_file instead."
         )
 
-    async def execute(self, path: str | None = None, content: str | None = None, **kwargs: Any) -> str:
+    async def execute(
+        self, path: str | None = None, content: str | None = None, **kwargs: Any
+    ) -> str:
         try:
             if not path:
                 raise ValueError("Unknown path")
@@ -368,11 +423,16 @@ class WriteFileTool(_FsTool):
 # edit_file
 # ---------------------------------------------------------------------------
 
-_QUOTE_TABLE = str.maketrans({
-    "\u2018": "'", "\u2019": "'",  # curly single → straight
-    "\u201c": '"', "\u201d": '"',  # curly double → straight
-    "'": "'", '"': '"',            # identity (kept for completeness)
-})
+_QUOTE_TABLE = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",  # curly single → straight
+        "\u201c": '"',
+        "\u201d": '"',  # curly double → straight
+        "'": "'",
+        '"': '"',  # identity (kept for completeness)
+    }
+)
 
 
 def _normalize_quotes(s: str) -> str:
@@ -410,7 +470,10 @@ def _curly_single_quotes(text: str) -> str:
 
 def _preserve_quote_style(old_text: str, actual_text: str, new_text: str) -> str:
     """Preserve curly quote style when a quote-normalized fallback matched."""
-    if _normalize_quotes(old_text.strip()) != _normalize_quotes(actual_text.strip()) or old_text == actual_text:
+    if (
+        _normalize_quotes(old_text.strip()) != _normalize_quotes(actual_text.strip())
+        or old_text == actual_text
+    ):
         return new_text
 
     styled = new_text
@@ -451,7 +514,7 @@ def _reindent_like_match(old_text: str, actual_text: str, new_text: str) -> str:
     if old_ws:
         if not actual_ws.startswith(old_ws):
             return new_text
-        delta = actual_ws[len(old_ws):]
+        delta = actual_ws[len(old_ws) :]
     else:
         delta = actual_ws
 
@@ -488,7 +551,9 @@ def _find_exact_matches(content: str, old_text: str) -> list[_MatchSpan]:
     return matches
 
 
-def _find_trim_matches(content: str, old_text: str, *, normalize_quotes: bool = False) -> list[_MatchSpan]:
+def _find_trim_matches(
+    content: str, old_text: str, *, normalize_quotes: bool = False
+) -> list[_MatchSpan]:
     old_lines = old_text.splitlines()
     if not old_lines:
         return []
@@ -586,17 +651,26 @@ def _diagnose_near_match(old_text: str, actual_text: str) -> list[str]:
 
     if old_text.lower() == actual_text.lower() and old_text != actual_text:
         hints.append("letter case differs")
-    if _collapse_internal_whitespace(old_text) == _collapse_internal_whitespace(actual_text) and old_text != actual_text:
+    if (
+        _collapse_internal_whitespace(old_text)
+        == _collapse_internal_whitespace(actual_text)
+        and old_text != actual_text
+    ):
         hints.append("whitespace differs")
     if old_text.rstrip("\n") == actual_text.rstrip("\n") and old_text != actual_text:
         hints.append("trailing newline differs")
-    if _normalize_quotes(old_text) == _normalize_quotes(actual_text) and old_text != actual_text:
+    if (
+        _normalize_quotes(old_text) == _normalize_quotes(actual_text)
+        and old_text != actual_text
+    ):
         hints.append("quote style differs")
 
     return hints
 
 
-def _best_window(old_text: str, content: str) -> tuple[float, int, list[str], list[str]]:
+def _best_window(
+    old_text: str, content: str
+) -> tuple[float, int, list[str], list[str]]:
     """Find the closest line-window match and return ratio/start/snippet/hints."""
     lines = content.splitlines(keepends=True)
     old_lines = old_text.splitlines(keepends=True)
@@ -613,7 +687,9 @@ def _best_window(old_text: str, content: str) -> tuple[float, int, list[str], li
             best_window_lines = current
 
     actual_text = "".join(best_window_lines).replace("\r\n", "\n").rstrip("\n")
-    hints = _diagnose_near_match(old_text.replace("\r\n", "\n").rstrip("\n"), actual_text)
+    hints = _diagnose_near_match(
+        old_text.replace("\r\n", "\n").rstrip("\n"), actual_text
+    )
     return best_ratio, best_start, best_window_lines, hints
 
 
@@ -633,15 +709,7 @@ def _find_match(content: str, old_text: str) -> tuple[str | None, int]:
     return matches[0].text, len(matches)
 
 
-@tool_parameters(
-    tool_parameters_schema(
-        path=StringSchema("The file path to edit"),
-        old_text=StringSchema("The text to find and replace"),
-        new_text=StringSchema("The text to replace with"),
-        replace_all=BooleanSchema(description="Replace all occurrences (default false)"),
-        required=["path", "old_text", "new_text"],
-    )
-)
+@tool_parameters(_EditFileParams)
 class EditFileTool(_FsTool):
     """Edit a file by replacing text with fallback matching."""
 
@@ -667,9 +735,12 @@ class EditFileTool(_FsTool):
         return "\n".join(line.rstrip() for line in text.split("\n"))
 
     async def execute(
-        self, path: str | None = None, old_text: str | None = None,
+        self,
+        path: str | None = None,
+        old_text: str | None = None,
         new_text: str | None = None,
-        replace_all: bool = False, **kwargs: Any,
+        replace_all: bool = False,
+        **kwargs: Any,
     ) -> str:
         try:
             if not path:
@@ -750,10 +821,16 @@ class EditFileTool(_FsTool):
                 # Delete-line cleanup: when deleting text (new_text=''), consume trailing
                 # newline to avoid leaving a blank line
                 end = match.end
-                if replacement == "" and not match.text.endswith("\n") and content[end:end + 1] == "\n":
+                if (
+                    replacement == ""
+                    and not match.text.endswith("\n")
+                    and content[end : end + 1] == "\n"
+                ):
                     end += 1
 
-                new_content = new_content[: match.start] + replacement + new_content[end:]
+                new_content = (
+                    new_content[: match.start] + replacement + new_content[end:]
+                )
             if uses_crlf:
                 new_content = new_content.replace("\n", "\r\n")
 
@@ -783,15 +860,19 @@ class EditFileTool(_FsTool):
 
     @staticmethod
     def _not_found_msg(old_text: str, content: str, path: str) -> str:
-        best_ratio, best_start, best_window_lines, hints = _best_window(old_text, content)
+        best_ratio, best_start, best_window_lines, hints = _best_window(
+            old_text, content
+        )
         if best_ratio > 0.5:
-            diff = "\n".join(difflib.unified_diff(
-                old_text.splitlines(keepends=True),
-                best_window_lines,
-                fromfile="old_text (provided)",
-                tofile=f"{path} (actual, line {best_start + 1})",
-                lineterm="",
-            ))
+            diff = "\n".join(
+                difflib.unified_diff(
+                    old_text.splitlines(keepends=True),
+                    best_window_lines,
+                    fromfile="old_text (provided)",
+                    tofile=f"{path} (actual, line {best_start + 1})",
+                    lineterm="",
+                )
+            )
             hint_text = ""
             if hints:
                 hint_text = "\nPossible cause: " + ", ".join(hints) + "."
@@ -813,26 +894,26 @@ class EditFileTool(_FsTool):
 # list_dir
 # ---------------------------------------------------------------------------
 
-@tool_parameters(
-    tool_parameters_schema(
-        path=StringSchema("The directory path to list"),
-        recursive=BooleanSchema(description="Recursively list all files (default false)"),
-        max_entries=IntegerSchema(
-            200,
-            description="Maximum entries to return (default 200)",
-            minimum=1,
-        ),
-        required=["path"],
-    )
-)
+
+@tool_parameters(_ListDirParams)
 class ListDirTool(_FsTool):
     """List directory contents with optional recursion."""
 
     _DEFAULT_MAX = 200
     _IGNORE_DIRS = {
-        ".git", "node_modules", "__pycache__", ".venv", "venv",
-        "dist", "build", ".tox", ".mypy_cache", ".pytest_cache",
-        ".ruff_cache", ".coverage", "htmlcov",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".coverage",
+        "htmlcov",
     }
 
     @property
@@ -852,8 +933,11 @@ class ListDirTool(_FsTool):
         return True
 
     async def execute(
-        self, path: str | None = None, recursive: bool = False,
-        max_entries: int | None = None, **kwargs: Any,
+        self,
+        path: str | None = None,
+        recursive: bool = False,
+        max_entries: int | None = None,
+        **kwargs: Any,
     ) -> str:
         try:
             if path is None:

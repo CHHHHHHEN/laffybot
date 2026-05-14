@@ -1,53 +1,52 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Plus, Pencil, Trash2, Globe, Loader2, Plug } from 'lucide-react'
-import { useProviderStore } from '@/stores/provider-store'
+import { useQueries } from '@tanstack/react-query'
+import * as api from '@/lib/api'
+import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider } from '@/hooks/use-providers'
 import { ProviderForm } from '@/components/settings/ProviderForm'
 import { ModelList } from '@/components/settings/ModelList'
+import { Button } from '@/components/ui/Button'
 import { useToastStore } from '@/stores/toast-store'
-import { testProvider } from '@/lib/api'
 
 export function ProviderSettingsPage() {
-  const providers = useProviderStore((s) => s.providers)
-  const models = useProviderStore((s) => s.models)
-  const isLoading = useProviderStore((s) => s.isLoading)
-  const fetchProviders = useProviderStore((s) => s.fetchProviders)
-  const fetchModels = useProviderStore((s) => s.fetchModels)
-  const createProvider = useProviderStore((s) => s.createProvider)
-  const updateProvider = useProviderStore((s) => s.updateProvider)
-  const deleteProvider = useProviderStore((s) => s.deleteProvider)
+  const { data: providers = [], isLoading } = useProviders()
+  const createProvider = useCreateProvider()
+  const updateProvider = useUpdateProvider()
+  const deleteProvider = useDeleteProvider()
+
+  const modelQueries = useQueries({
+    queries: providers.map((p) => ({
+      queryKey: ['models', p.id],
+      queryFn: () => api.listModels(p.id),
+      staleTime: 30_000,
+    })),
+  })
+
+  const modelsMap = Object.fromEntries(
+    providers.map((p, i) => [p.id, modelQueries[i].data ?? []])
+  )
 
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchProviders()
-  }, [fetchProviders])
-
-  useEffect(() => {
-    providers.forEach((p) => {
-      if (!models[p.id]) {
-        fetchModels(p.id)
-      }
-    })
-  }, [providers, models, fetchModels])
-
   const handleCreate = async (data: { name: string; base_url: string; api_key: string; extra_headers: Record<string, string> }) => {
-    await createProvider(data)
+    await createProvider.mutateAsync(data)
     setShowForm(false)
     useToastStore.getState().addToast('success', '提供商创建成功')
   }
 
   const handleUpdate = async (data: { name: string; base_url: string; api_key: string; extra_headers: Record<string, string> }) => {
     if (!editingId) return
-    await updateProvider(editingId, data)
+    await updateProvider.mutateAsync({ id: editingId, data })
     setEditingId(null)
     useToastStore.getState().addToast('success', '提供商更新成功')
   }
 
   const handleDelete = async (id: string) => {
     try {
-      const activeCleared = await deleteProvider(id)
+      const result = await deleteProvider.mutateAsync(id)
+      const activeCleared = (result as { active_cleared?: boolean })?.active_cleared ?? false
       useToastStore.getState().addToast('success', '提供商已删除')
       if (activeCleared) {
         useToastStore.getState().addToast('info', '当前选中的提供商已被删除，请重新选择')
@@ -60,7 +59,7 @@ export function ProviderSettingsPage() {
   const handleTest = async (id: string) => {
     setTestingId(id)
     try {
-      const result = await testProvider(id)
+      const result = await api.testProvider(id)
       if (result.success) {
         useToastStore.getState().addToast('success', `连接成功 (${result.latency_ms}ms)`)
       } else {
@@ -81,14 +80,13 @@ export function ProviderSettingsPage() {
         <p className="text-sm text-[var(--color-text-secondary)]">
           管理 LLM 提供商配置
         </p>
-        <button
+        <Button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-[var(--color-brand)] text-white px-4 py-2 text-sm font-medium hover:bg-[var(--color-brand-hover)] transition-colors duration-150"
           aria-label="添加提供商"
         >
           <Plus size={16} />
           添加提供商
-        </button>
+        </Button>
       </div>
 
       {isLoading ? (
@@ -126,10 +124,10 @@ export function ProviderSettingsPage() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button
+                  <Button
+                    variant="icon"
                     onClick={() => handleTest(provider.id)}
                     disabled={testingId === provider.id}
-                    className="p-1.5 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-brand)] transition-colors duration-150 disabled:opacity-50"
                     aria-label="测试连接"
                   >
                     {testingId === provider.id ? (
@@ -137,27 +135,27 @@ export function ProviderSettingsPage() {
                     ) : (
                       <Plug size={14} />
                     )}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="icon"
                     onClick={() => setEditingId(provider.id)}
-                    className="p-1.5 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)] transition-colors duration-150"
                     aria-label="编辑提供商"
                   >
                     <Pencil size={14} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="icon"
                     onClick={() => handleDelete(provider.id)}
-                    className="p-1.5 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-error)] transition-colors duration-150"
                     aria-label="删除提供商"
                   >
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               <ModelList
                 providerId={provider.id}
-                models={models[provider.id] || []}
+                models={modelsMap[provider.id] || []}
               />
             </div>
           ))}

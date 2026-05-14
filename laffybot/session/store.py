@@ -148,7 +148,9 @@ class SQLiteStore(SessionStore):
         if self._db is None:
             db_path = self.db_path
             if db_path != ":memory:":
-                Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+                Path(db_path).expanduser().resolve().parent.mkdir(
+                    parents=True, exist_ok=True
+                )
             self._db = await aiosqlite.connect(db_path)
             self._db.row_factory = aiosqlite.Row
             await self._db.execute("PRAGMA foreign_keys = ON")
@@ -292,14 +294,18 @@ class SQLiteStore(SessionStore):
         if expected_status is not None:
             logger.warning(
                 "Session status conflict: session_id={}, expected={}, actual={}",
-                session_id, expected_status, current.status,
+                session_id,
+                expected_status,
+                current.status,
             )
             raise SessionStateError(session_id, current.status)
         raise SessionNotFoundError(session_id)
 
     async def delete_session(self, session_id: str) -> None:
         db = await self._ensure_db()
-        cursor = await db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        cursor = await db.execute(
+            "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+        )
         await db.commit()
         if cursor.rowcount == 0:
             raise SessionNotFoundError(session_id)
@@ -337,7 +343,9 @@ class SQLiteStore(SessionStore):
     ) -> SessionMessage:
         db = await self._ensure_db()
         timestamp = self._format_dt(self._now())
-        metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata is not None else None
+        metadata_json = (
+            json.dumps(metadata, ensure_ascii=False) if metadata is not None else None
+        )
         await db.execute("BEGIN")
         try:
             await db.execute(
@@ -345,7 +353,15 @@ class SQLiteStore(SessionStore):
                 INSERT INTO messages (session_id, role, content, timestamp, metadata, input_tokens, output_tokens)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, role, content, timestamp, metadata_json, input_tokens, output_tokens),
+                (
+                    session_id,
+                    role,
+                    content,
+                    timestamp,
+                    metadata_json,
+                    input_tokens,
+                    output_tokens,
+                ),
             )
             await db.execute(
                 """

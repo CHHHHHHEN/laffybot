@@ -75,7 +75,9 @@ class SessionManager:
             system_prompt=system_prompt,
             max_iterations=max_iterations,
         )
-        logger.info("Session created: session_id={}, model={}", session_id, selection.model_name)
+        logger.info(
+            "Session created: session_id={}, model={}", session_id, selection.model_name
+        )
         return session
 
     async def get_session_info(self, session_id: str) -> SessionInfo:
@@ -111,7 +113,12 @@ class SessionManager:
         if token is None:
             raise SessionNotBusyError(session_id)
         token.cancel(reason)
-        logger.warning("Request cancelled: session_id={}, request_id={}, reason={}", session_id, session.current_request_id, reason)
+        logger.warning(
+            "Request cancelled: session_id={}, request_id={}, reason={}",
+            session_id,
+            session.current_request_id,
+            reason,
+        )
         return session.current_request_id or ""
 
     async def send_message(
@@ -129,7 +136,9 @@ class SessionManager:
             selection = await self.provider_store.get_active_selection()
             if selection is None:
                 raise NoActiveProviderError()
-            provider_config = await self.provider_store.get_provider_config(selection.provider_id)
+            provider_config = await self.provider_store.get_provider_config(
+                selection.provider_id
+            )
 
             request_id = self._request_id()
             token = CancellationToken()
@@ -151,7 +160,9 @@ class SessionManager:
                 log.debug("Session status changed: idle -> busy")
                 await self.store.save_message(session_id, "user", content)
 
-                messages = await self._build_messages(session, content, selection.model_name)
+                messages = await self._build_messages(
+                    session, content, selection.model_name
+                )
                 provider = OpenAIProvider(provider_config)
                 runner = AgentRunner(provider)
                 spec = AgentRunSpec(

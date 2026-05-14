@@ -3,4 +3,3 @@
 from laffybot.config import ContextConfig
 
 __all__ = ["ContextConfig"]
-

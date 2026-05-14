@@ -155,7 +155,9 @@ class SQLiteProviderStore(ProviderStore):
         if self._db is None:
             db_path = self.db_path
             if db_path != ":memory:":
-                Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+                Path(db_path).expanduser().resolve().parent.mkdir(
+                    parents=True, exist_ok=True
+                )
             self._db = await aiosqlite.connect(db_path)
             self._db.row_factory = aiosqlite.Row
             await self._db.execute("PRAGMA foreign_keys = ON")
@@ -197,7 +199,16 @@ class SQLiteProviderStore(ProviderStore):
                                    extra_headers, extra_body, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (provider_id, name, base_url, encrypted_key, headers_json, body_json, timestamp, timestamp),
+            (
+                provider_id,
+                name,
+                base_url,
+                encrypted_key,
+                headers_json,
+                body_json,
+                timestamp,
+                timestamp,
+            ),
         )
         await db.commit()
         return ProviderRow(
@@ -214,7 +225,8 @@ class SQLiteProviderStore(ProviderStore):
     async def get_provider(self, provider_id: str) -> ProviderRow:
         db = await self._ensure_db()
         async with db.execute(
-            "SELECT * FROM providers WHERE provider_id = ?", (provider_id,),
+            "SELECT * FROM providers WHERE provider_id = ?",
+            (provider_id,),
         ) as cursor:
             row = await cursor.fetchone()
         if row is None:
@@ -270,7 +282,8 @@ class SQLiteProviderStore(ProviderStore):
             active_cleared = True
 
         cursor = await db.execute(
-            "DELETE FROM providers WHERE provider_id = ?", (provider_id,),
+            "DELETE FROM providers WHERE provider_id = ?",
+            (provider_id,),
         )
         await db.commit()
         if cursor.rowcount == 0:
@@ -314,7 +327,8 @@ class SQLiteProviderStore(ProviderStore):
             await self.clear_active_selection()
 
         cursor = await db.execute(
-            "DELETE FROM provider_models WHERE model_id = ?", (model_id,),
+            "DELETE FROM provider_models WHERE model_id = ?",
+            (model_id,),
         )
         await db.commit()
         if cursor.rowcount == 0:
@@ -329,16 +343,25 @@ class SQLiteProviderStore(ProviderStore):
             (provider_id,),
         ) as cursor:
             rows = await cursor.fetchall()
-        return [ModelRow(model_id=row["model_id"], provider_id=row["provider_id"], name=row["name"]) for row in rows]
+        return [
+            ModelRow(
+                model_id=row["model_id"],
+                provider_id=row["provider_id"],
+                name=row["name"],
+            )
+            for row in rows
+        ]
 
     async def get_active_selection(self) -> ActiveSelection | None:
         db = await self._ensure_db()
         async with db.execute(
-            "SELECT value FROM app_settings WHERE key = ?", (_ACTIVE_PROVIDER_KEY,),
+            "SELECT value FROM app_settings WHERE key = ?",
+            (_ACTIVE_PROVIDER_KEY,),
         ) as cursor:
             provider_row = await cursor.fetchone()
         async with db.execute(
-            "SELECT value FROM app_settings WHERE key = ?", (_ACTIVE_MODEL_KEY,),
+            "SELECT value FROM app_settings WHERE key = ?",
+            (_ACTIVE_MODEL_KEY,),
         ) as cursor:
             model_row = await cursor.fetchone()
 
@@ -388,11 +411,16 @@ class SQLiteProviderStore(ProviderStore):
             (_ACTIVE_MODEL_KEY, model_id),
         )
         await db.commit()
-        logger.info("Active selection set: provider_id={}, model_id={}", provider_id, model_id)
+        logger.info(
+            "Active selection set: provider_id={}, model_id={}", provider_id, model_id
+        )
 
     async def clear_active_selection(self) -> None:
         db = await self._ensure_db()
-        await db.execute("DELETE FROM app_settings WHERE key IN (?, ?)", (_ACTIVE_PROVIDER_KEY, _ACTIVE_MODEL_KEY))
+        await db.execute(
+            "DELETE FROM app_settings WHERE key IN (?, ?)",
+            (_ACTIVE_PROVIDER_KEY, _ACTIVE_MODEL_KEY),
+        )
         await db.commit()
         logger.info("Active selection cleared")
 
@@ -402,7 +430,8 @@ class SQLiteProviderStore(ProviderStore):
         if provider.has_api_key:
             db = await self._ensure_db()
             async with db.execute(
-                "SELECT api_key_encrypted FROM providers WHERE provider_id = ?", (provider_id,),
+                "SELECT api_key_encrypted FROM providers WHERE provider_id = ?",
+                (provider_id,),
             ) as cursor:
                 row = await cursor.fetchone()
             encrypted = row["api_key_encrypted"] if row is not None else None
@@ -410,7 +439,11 @@ class SQLiteProviderStore(ProviderStore):
                 try:
                     api_key_plain = decrypt_api_key(encrypted)
                 except Exception as exc:
-                    logger.error("Failed to decrypt API key for provider_id={}: {}", provider_id, exc)
+                    logger.error(
+                        "Failed to decrypt API key for provider_id={}: {}",
+                        provider_id,
+                        exc,
+                    )
                     raise
         logger.debug("Retrieved provider config: provider_id={}", provider_id)
         return ProviderConfig(
@@ -434,8 +467,12 @@ class SQLiteProviderStore(ProviderStore):
             name=row["name"],
             base_url=row["base_url"],
             has_api_key=bool(row["api_key_encrypted"]),
-            extra_headers=json.loads(row["extra_headers"]) if isinstance(row["extra_headers"], str) else (row["extra_headers"] or {}),
-            extra_body=json.loads(row["extra_body"]) if isinstance(row["extra_body"], str) else (row["extra_body"] or {}),
+            extra_headers=json.loads(row["extra_headers"])
+            if isinstance(row["extra_headers"], str)
+            else (row["extra_headers"] or {}),
+            extra_body=json.loads(row["extra_body"])
+            if isinstance(row["extra_body"], str)
+            else (row["extra_body"] or {}),
             created_at=self._parse_dt(row["created_at"]),
             updated_at=self._parse_dt(row["updated_at"]),
         )

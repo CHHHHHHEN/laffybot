@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from laffybot import __version__
+from laffybot.agent.tools.errors import ToolError
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
     build_provider_store,
@@ -81,15 +82,28 @@ def create_app(
         _: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        return error_response(400, "INVALID_REQUEST", "Invalid request", {"errors": exc.errors()})
+        return error_response(
+            400, "INVALID_REQUEST", "Invalid request", {"errors": exc.errors()}
+        )
 
     @app.exception_handler(SessionError)
     async def session_exception_handler(_: Request, exc: SessionError) -> JSONResponse:
         return map_session_error(exc)
 
     @app.exception_handler(ProviderError)
-    async def provider_exception_handler(_: Request, exc: ProviderError) -> JSONResponse:
+    async def provider_exception_handler(
+        _: Request, exc: ProviderError
+    ) -> JSONResponse:
         return map_provider_error(exc)  # type: ignore[arg-type]
+
+    @app.exception_handler(ToolError)
+    async def tool_exception_handler(_: Request, exc: ToolError) -> JSONResponse:
+        return error_response(
+            500 if exc.code == "TOOL_EXECUTION_ERROR" else 400,
+            exc.code,
+            str(exc),
+            {"tool_name": exc.tool_name} if exc.tool_name else None,
+        )
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(_: Request, exc: Exception) -> JSONResponse:

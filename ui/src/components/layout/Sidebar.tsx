@@ -4,22 +4,22 @@ import { useUiStore } from '@/stores/ui-store'
 import { NavLinks } from './NavLinks'
 import { GlobalModelSelector } from './GlobalModelSelector'
 import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2 } from 'lucide-react'
-import { useSessionStore } from '@/stores/session-store'
-import { useProviderStore } from '@/stores/provider-store'
 import { NewSessionDialog } from '@/components/ui/NewSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { Button } from '@/components/ui/Button'
+import { useSessions, useCreateSession, useDeleteSession } from '@/hooks/use-sessions'
 import { useToastStore } from '@/stores/toast-store'
-import type { Session } from '@/stores/session-store'
 
 export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUiStore()
   const navigate = useNavigate()
-  const sessions = useSessionStore((s) => s.sessions)
-  const activeSessionId = useSessionStore((s) => s.activeSessionId)
-  const isLoading = useSessionStore((s) => s.isLoading)
-  const activeSelection = useProviderStore((s) => s.activeSelection)
-  const createSession = useSessionStore((s) => s.createSession)
-  const deleteSession = useSessionStore((s) => s.deleteSession)
+  const sessionsQuery = useSessions()
+  const createSession = useCreateSession()
+  const deleteSession = useDeleteSession()
+
+  const allSessions = sessionsQuery.data?.pages.flatMap((p) => p.sessions) ?? []
+  const isLoading = sessionsQuery.isLoading
+
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -27,7 +27,7 @@ export function Sidebar() {
   const handleCreateSession = async (systemPrompt: string, maxIterations: number) => {
     setDialogError(null)
     try {
-      const session = await createSession({
+      const session = await createSession.mutateAsync({
         system_prompt: systemPrompt || undefined,
         max_iterations: maxIterations,
       })
@@ -43,10 +43,8 @@ export function Sidebar() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      await deleteSession(deleteTarget)
-      if (activeSessionId === deleteTarget) {
-        navigate('/chat')
-      }
+      await deleteSession.mutateAsync(deleteTarget)
+      navigate('/chat')
     } catch {
       useToastStore.getState().addToast('error', '删除会话失败')
     }
@@ -79,31 +77,32 @@ export function Sidebar() {
                 Laffybot
               </span>
             )}
-            <button
+            <Button
+              variant="icon"
               onClick={toggleSidebar}
-              className="p-1.5 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)] transition-colors duration-150"
               aria-label={sidebarOpen ? '折叠侧边栏' : '展开侧边栏'}
             >
               {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
-            </button>
+            </Button>
           </div>
 
           {/* Nav links */}
           <NavLinks />
 
           {/* Global model selector */}
-          {sidebarOpen && <GlobalModelSelector key={activeSelection ? `${activeSelection.provider_id}:${activeSelection.model_id}` : 'empty'} />}
+          {sidebarOpen && <GlobalModelSelector />}
 
           {/* New chat button */}
           <div className="px-3 mb-2">
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setShowNewDialog(true)}
-              className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)] transition-colors duration-150"
+              className="w-full justify-start"
               aria-label="新建会话"
             >
               <MessageSquarePlus size={18} />
               <span>新建会话</span>
-            </button>
+            </Button>
           </div>
 
           {/* Session list */}
@@ -114,33 +113,30 @@ export function Sidebar() {
                   <div key={i} className="h-8 rounded-md bg-[var(--color-secondary-bg)] animate-pulse" style={{ width: `${60 + i * 10}%` }} />
                 ))}
               </div>
-            ) : sessions.length === 0 ? (
+            ) : allSessions.length === 0 ? (
               <p className="text-xs text-[var(--color-text-placeholder)] px-3 py-4">
                 还没有会话
               </p>
             ) : (
               <div className="flex flex-col gap-0.5">
-                {sessions.map((session: Session) => (
+                {allSessions.map((session) => (
                   <div
                     key={session.session_id}
                     onClick={() => navigate(`/chat/${session.session_id}`)}
-                    className={`group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 ${
-                      activeSessionId === session.session_id
-                        ? 'bg-[var(--color-hover-bg)] text-[var(--color-text-primary)]'
-                        : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]'
-                    }`}
+                    className="group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]"
                   >
                     <div className="flex-1 truncate">{session.model || session.session_id.slice(0, 8)}</div>
-                    <button
+                    <Button
+                      variant="icon"
                       onClick={(e) => {
                         e.stopPropagation()
                         setDeleteTarget(session.session_id)
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-placeholder)] hover:text-[var(--color-error)] hover:bg-[var(--color-hover-bg)] transition-all duration-150"
+                      className="opacity-0 group-hover:opacity-100"
                       aria-label="删除会话"
                     >
                       <Trash2 size={14} />
-                    </button>
+                    </Button>
                     {session.status === 'busy' && (
                       <Loader2 size={14} className="animate-spin text-[var(--color-info)] shrink-0" />
                     )}

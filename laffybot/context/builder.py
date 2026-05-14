@@ -79,7 +79,9 @@ class SimpleContextBuilder(ContextBuilder):
         messages.append({"role": "user", "content": current_message})
 
         # 4. Apply capacity control
-        messages = self._apply_capacity_control(messages, effective_prompt is not None, session_id)
+        messages = self._apply_capacity_control(
+            messages, effective_prompt is not None, session_id
+        )
 
         return messages
 
@@ -140,7 +142,10 @@ class SimpleContextBuilder(ContextBuilder):
         original_count = len(messages)
         logger.debug(
             "Context capacity control triggered: session_id={}, original_messages={}, max_tokens={}, max_messages={}",
-            session_id, original_count, self._config.max_tokens, self._config.max_messages,
+            session_id,
+            original_count,
+            self._config.max_tokens,
+            self._config.max_messages,
         )
 
         # Truncate history while respecting min_preserve_pairs
@@ -174,7 +179,9 @@ class SimpleContextBuilder(ContextBuilder):
 
         logger.debug(
             "Context truncated: session_id={}, messages {} -> {}",
-            session_id, original_count, len(result),
+            session_id,
+            original_count,
+            len(result),
         )
 
         return result

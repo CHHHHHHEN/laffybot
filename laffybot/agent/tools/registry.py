@@ -3,6 +3,9 @@
 from typing import Any
 
 from laffybot.agent.tools.base import Tool
+from laffybot.agent.tools.errors import ToolError
+
+_HINT = "\n\n[Analyze the error above and try a different approach.]"
 
 
 class ToolRegistry:
@@ -75,41 +78,52 @@ class ToolRegistry:
         name: str,
         params: dict[str, Any],
     ) -> tuple[Tool | None, dict[str, Any], str | None]:
-        """Resolve, cast, and validate one tool call."""
-        # Guard against invalid parameter types (e.g., list instead of dict)
-        if not isinstance(params, dict) and name in ('write_file', 'read_file'):
-            return None, params, (
-                f"Error: Tool '{name}' parameters must be a JSON object, got {type(params).__name__}. "
-                "Use named parameters: tool_name(param1=\"value1\", param2=\"value2\")"
-            )
+        """Resolve, cast, and validate one tool call.
 
+        Returns ``(tool, cast_params, None)`` on success, or
+        ``(tool_or_None, params, error_message)`` on failure.
+        Raises ``ToolError`` for structural issues that should propagate.
+        """
         tool = self._tools.get(name)
         if not tool:
-            return None, params, (
-                f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
+            return (
+                None,
+                params,
+                (
+                    f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
+                ),
             )
 
-        cast_params = tool.cast_params(params)
-        errors = tool.validate_params(cast_params)
-        if errors:
-            return tool, cast_params, (
-                f"Error: Invalid parameters for tool '{name}': " + "; ".join(errors)
+        try:
+            cast_params = tool.cast_params(params)
+            return tool, cast_params, None
+        except Exception as e:
+            msg = str(e) if str(e) else type(e).__name__
+            return (
+                tool,
+                params,
+                f"Error: Invalid parameters for tool '{name}': {msg}",
             )
-        return tool, cast_params, None
 
     async def execute(self, name: str, params: dict[str, Any]) -> Any:
-        """Execute a tool by name with given parameters."""
-        _hint = "\n\n[Analyze the error above and try a different approach.]"
+        """Execute a tool by name with given parameters.
+
+        Returns the tool result (normally a string).  On failure the result
+        starts with ``"Error:"`` so the LLM can self-correct.
+        """
+        _hint = _HINT
         tool, params, error = self.prepare_call(name, params)
         if error:
             return error + _hint
 
         try:
-            assert tool is not None  # guarded by prepare_call()
+            assert tool is not None
             result = await tool.execute(**params)
             if isinstance(result, str) and result.startswith("Error"):
                 return result + _hint
             return result
+        except ToolError as e:
+            return f"Error executing {name}: {e}" + _hint
         except Exception as e:
             return f"Error executing {name}: {str(e)}" + _hint
 

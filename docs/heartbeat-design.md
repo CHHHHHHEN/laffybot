@@ -1,8 +1,8 @@
 # 心跳机制设计文档
 
-> **✅ 实现状态：组件已实现，但尚未接入当前 SSE 路由**
+> **✅ 实现状态：组件已实现并接入 SSE 路由**
 > 
-> 实现位置：`laffybot/agent/heartbeat.py`
+> 实现位置：`laffybot/agent/heartbeat.py` · 接入位置：`laffybot/api/routes.py` `_stream_session_events()`
 
 > **文档范围说明**：本文档专注于 SSE 连接的心跳机制设计，确保连接保活和超时检测。
 > 
@@ -40,7 +40,7 @@
 - **职责单一**：仅负责心跳发送和连接状态检测，不处理业务逻辑
 - **可配置性**：心跳间隔和超时时间可通过配置调整
 
-> **当前代码注记：** `HeartbeatManager` 和 `ping` 事件已定义，但现有 `POST /api/v1/sessions/{session_id}/messages` SSE 流尚未调用该组件，因此“自动发送心跳”仍是设计目标。
+> **当前代码注记：** `HeartbeatManager` 已在 `_stream_session_events()` 中接入，使用 `asyncio.wait_for` 在事件间隙检测空闲超时（默认 15s），超时则自动发送 `ping` 事件。
 
 ## 核心职责
 

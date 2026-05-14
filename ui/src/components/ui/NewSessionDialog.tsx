@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
-import { X, Settings } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useProviderStore } from '@/stores/provider-store'
+import { useActiveSelection } from '@/hooks/use-providers'
+import { Modal } from './Modal'
+import { Button } from './Button'
+import { Textarea, Input } from './Input'
 
 interface NewSessionDialogProps {
   isOpen: boolean
@@ -12,129 +15,83 @@ interface NewSessionDialogProps {
 
 export function NewSessionDialog({ isOpen, onSubmit, onCancel, error }: NewSessionDialogProps) {
   const navigate = useNavigate()
-  const activeSelection = useProviderStore((s) => s.activeSelection)
+  const { data: activeSelection } = useActiveSelection()
   const [systemPrompt, setSystemPrompt] = useState('')
   const [maxIterations, setMaxIterations] = useState(10)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [isOpen, onCancel])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSubmit(systemPrompt.trim(), maxIterations)
   }
 
-  if (!isOpen) return null
-
-  const hasActive = activeSelection !== null
+  const hasActive = activeSelection !== null && activeSelection !== undefined
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onCancel} />
-      <div
-        className="relative bg-[var(--color-page-bg)] rounded-lg shadow-xl w-full max-w-md mx-4 p-6"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-session-title"
-      >
-        <button
-          onClick={onCancel}
-          className="absolute top-4 right-4 p-1 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] transition-colors duration-150"
-          aria-label="关闭"
-        >
-          <X size={16} />
-        </button>
-
-        <h3 id="new-session-title" className="text-h3 font-semibold text-[var(--color-text-primary)] mb-4">
-          新建会话
-        </h3>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Current model selection (read-only) */}
-          <div>
-            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
-              当前模型
-            </label>
-            {hasActive ? (
-              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-secondary-bg)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-                {activeSelection.provider_name} / {activeSelection.model_name}
-              </div>
-            ) : (
-              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-secondary-bg)] px-3 py-2">
-                <p className="text-sm text-[var(--color-text-placeholder)] mb-2">
-                  请先选择提供商和模型
-                </p>
-                <button
-                  type="button"
-                  onClick={() => { onCancel(); navigate('/settings/provider') }}
-                  className="inline-flex items-center gap-1 text-xs text-[var(--color-brand)] hover:text-[var(--color-brand-hover)] transition-colors duration-150"
-                >
-                  <Settings size={12} />
-                  前往设置配置提供商
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="system-prompt" className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
-              System Prompt <span className="text-[var(--color-text-placeholder)]">(可选)</span>
-            </label>
-            <textarea
-              ref={inputRef}
-              id="system-prompt"
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              rows={3}
-              placeholder="设定助手的角色和行为..."
-              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none focus:border-[var(--color-brand)] transition-colors duration-150 resize-none"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="max-iterations" className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
-              最大迭代次数
-            </label>
-            <input
-              id="max-iterations"
-              type="number"
-              value={maxIterations}
-              onChange={(e) => setMaxIterations(Number(e.target.value))}
-              min={1}
-              max={100}
-              className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand)] transition-colors duration-150"
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-[var(--color-error)]">{error}</p>
+    <Modal isOpen={isOpen} onClose={onCancel} title="新建会话" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
+            当前模型
+          </label>
+          {hasActive ? (
+            <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-secondary-bg)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+              {activeSelection!.provider_name} / {activeSelection!.model_name}
+            </div>
+          ) : (
+            <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-secondary-bg)] px-3 py-2">
+              <p className="text-sm text-[var(--color-text-placeholder)] mb-2">
+                请先选择提供商和模型
+              </p>
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => { onCancel(); navigate('/settings/provider') }}
+              >
+                <Settings size={12} />
+                前往设置配置提供商
+              </Button>
+            </div>
           )}
+        </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-4 py-2 text-sm rounded-md border border-[var(--color-border)] text-[var(--color-text-primary)] hover:bg-[var(--color-hover-bg)] transition-colors duration-150"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={!hasActive}
-              className="px-4 py-2 text-sm rounded-md bg-[var(--color-brand)] text-white font-medium hover:bg-[var(--color-brand-hover)] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              创建
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div>
+          <label htmlFor="system-prompt" className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
+            System Prompt <span className="text-[var(--color-text-placeholder)]">(可选)</span>
+          </label>
+          <Textarea
+            ref={inputRef}
+            id="system-prompt"
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            rows={3}
+            placeholder="设定助手的角色和行为..."
+          />
+        </div>
+
+        <div>
+          <label htmlFor="max-iterations" className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
+            最大迭代次数
+          </label>
+          <Input
+            id="max-iterations"
+            type="number"
+            value={maxIterations}
+            onChange={(e) => setMaxIterations(Number(e.target.value))}
+            min={1}
+            max={100}
+          />
+        </div>
+
+        {error && (
+          <p className="text-sm text-[var(--color-error)]">{error}</p>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="ghost" onClick={onCancel}>取消</Button>
+          <Button type="submit" disabled={!hasActive}>创建</Button>
+        </div>
+      </form>
+    </Modal>
   )
 }

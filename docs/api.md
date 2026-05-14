@@ -460,6 +460,32 @@ PUT /api/v1/providers/active    # 设置当前选中
 }
 ```
 
+### 9. 工具列表
+
+```
+GET /api/v1/tools
+```
+
+**响应:**
+```json
+[
+    {
+        "name": "read_file",
+        "description": "Read a file (text, image, or document)...",
+        "read_only": true
+    },
+    {
+        "name": "write_file",
+        "description": "Write content to a file...",
+        "read_only": false
+    }
+]
+```
+
+返回当前注册的工具信息列表，仅用于展示。工具启停等管理功能待实现。
+
+---
+
 ### 错误码
 
 | HTTP 状态码 | 错误码 | 描述 |
@@ -473,8 +499,10 @@ PUT /api/v1/providers/active    # 设置当前选中
 | 409 | SESSION_NOT_BUSY | 会话当前无请求可取消 |
 | 409 | SESSION_STATE_ERROR | 会话状态转换冲突 |
 | 409 | MODEL_NAME_CONFLICT | 同一提供商下模型名重复 |
+| 400 | TOOL_VALIDATION_ERROR | 工具参数校验失败 |
 | 500 | INTERNAL_ERROR | 内部服务器错误 |
 | 500 | PROVIDER_CONFIG_ERROR | 提供商配置错误（API Key 解密失败等） |
+| 500 | TOOL_EXECUTION_ERROR | 工具执行异常 |
 | 502 | PROVIDER_CONNECTION_ERROR | 连通性测试连接失败 |
 
 ## SSE 事件类型

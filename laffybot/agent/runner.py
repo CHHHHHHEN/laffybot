@@ -25,6 +25,7 @@ from laffybot.agent.events import (
     event_tool_call,
     event_tool_result,
 )
+from laffybot.agent.tools.errors import ToolError
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.providers.base import BaseProvider
 from laffybot.providers.types import LLMResponse, StreamChunk, ToolCallRequest
@@ -78,7 +79,11 @@ class AgentRunner:
         request_id = request_id or f"req_{uuid.uuid4().hex[:12]}"
 
         log = logger.bind(session_id=session_id, request_id=request_id)
-        log.info("Agent run started: model={}, max_iterations={}", spec.model, spec.max_iterations)
+        log.info(
+            "Agent run started: model={}, max_iterations={}",
+            spec.model,
+            spec.max_iterations,
+        )
 
         messages = list(spec.initial_messages)
         tools_used: list[str] = []
@@ -104,7 +109,11 @@ class AgentRunner:
                 )
                 self._accumulate_usage(usage, response.usage)
 
-                log.debug("LLM response received: content_len={}, tool_calls={}", len(response.content or ""), len(response.tool_calls or []))
+                log.debug(
+                    "LLM response received: content_len={}, tool_calls={}",
+                    len(response.content or ""),
+                    len(response.tool_calls or []),
+                )
 
                 # Yield all queued content/reasoning events
                 while True:
@@ -145,6 +154,11 @@ class AgentRunner:
                             error_message = None
                         except CancelledError:
                             raise
+                        except ToolError as exc:
+                            logger.warning("Tool {} failed: {}", tool_call.name, exc)
+                            result = f"Error: {exc}"
+                            success = False
+                            error_message = str(exc)
                         except Exception as exc:
                             logger.exception("Tool {} failed", tool_call.name)
                             result = f"Error: {type(exc).__name__}: {exc}"
@@ -152,7 +166,12 @@ class AgentRunner:
                             error_message = str(exc)
 
                         duration_ms = int((time.perf_counter() - start_time) * 1000)
-                        log.debug("Tool execution completed: name={}, duration_ms={}, success={}", tool_call.name, duration_ms, success)
+                        log.debug(
+                            "Tool execution completed: name={}, duration_ms={}, success={}",
+                            tool_call.name,
+                            duration_ms,
+                            success,
+                        )
 
                         # Normalize result for message history
                         normalized_result = self._normalize_tool_result(
@@ -170,12 +189,14 @@ class AgentRunner:
                         )
 
                         # Append to message history
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": tool_call.name,
-                            "content": normalized_result,
-                        })
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "name": tool_call.name,
+                                "content": normalized_result,
+                            }
+                        )
 
                     continue  # Next iteration
 
@@ -205,7 +226,11 @@ class AgentRunner:
         except Exception as exc:
             # Error - emit error event
             logger.exception("Error during agent execution")
-            error_code = ERROR_LLM if "api" in str(type(exc).__name__).lower() else ERROR_INTERNAL
+            error_code = (
+                ERROR_LLM
+                if "api" in str(type(exc).__name__).lower()
+                else ERROR_INTERNAL
+            )
             yield event_error(
                 code=error_code,
                 message=str(exc),
@@ -262,7 +287,7 @@ class AgentRunner:
             return ""
         if isinstance(result, str):
             if len(result) > spec.max_tool_result_chars:
-                return result[:spec.max_tool_result_chars] + "\n...[truncated]"
+                return result[: spec.max_tool_result_chars] + "\n...[truncated]"
             return result
         return str(result)
 

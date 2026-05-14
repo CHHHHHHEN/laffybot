@@ -47,3 +47,7 @@ def get_provider_store(request: Request) -> ProviderStore:
 
 def get_session_manager(request: Request) -> SessionManager:
     return request.app.state.session_manager  # type: ignore[no-any-return]
+
+
+def get_tool_registry(request: Request) -> ToolRegistry:
+    return request.app.state.tool_registry  # type: ignore[no-any-return]

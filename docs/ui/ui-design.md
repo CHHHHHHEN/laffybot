@@ -151,9 +151,13 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 
 | 组件 | 职责 | 输入 | 输出 |
 |------|------|------|------|
-| `AppShell` | 整体布局骨架，管理 Sidebar + Main Panel；挂载时初始化 session-store 和 provider-store | 无 | 无 |
-| `Sidebar` | 导航 + 全局模型选择器 + 会话列表（内联） | sessions, activeSessionId, isLoading | 内部 handleCreateSession, handleDelete |
-| `GlobalModelSelector` | 全局提供商/模型选择器，级联下拉，切换即时生效 | providers, models, activeSelection（均来自 provider-store） | 无 |
+| `Button` | 通用按钮组件，variant (brand/ghost/danger/icon/link) + size (sm/md/icon) | variant, size, disabled, loading | onClick |
+| `Input` / `Textarea` / `Select` | 通用表单输入组件 | inputSize (sm/md), disabled, placeholder | onChange |
+| `Modal` | 模态对话框骨架（遮罩层 + Escape 关闭 + 居中 card） | isOpen, title, size (sm/md/lg), onClose | children |
+| `Collapsible` | 可折叠面板 | title, defaultOpen | children |
+| `AppShell` | 整体布局骨架，管理 Sidebar + Main Panel | 无 | 无 |
+| `Sidebar` | 导航 + 全局模型选择器 + 会话列表（内联） | sessions (useSessions), isLoading | 内部 handleCreateSession, handleDelete |
+| `GlobalModelSelector` | 全局提供商/模型选择器，级联下拉，选择即提交 | providers (useProviders), models (useModels), activeSelection | 无 |
 | `NewSessionDialog` | 创建会话的表单对话框；只读展示当前全局选中；无选中时展示跳转设置链接 | isOpen, error | onSubmit(systemPrompt, maxIterations), onCancel |
 | `ChatHeader` | 当前会话信息标题栏 | session, status | onBack（导航到 /chat） |
 | `MessageList` | 消息容器，管理滚动 + 自动跟随 | messages[], isStreaming, isLoading, error, onRetry | 无 |
@@ -163,10 +167,10 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 | `ToolCallCard` | 工具调用进行中卡片（可展开参数） | toolCall (id, name, arguments, status) | 无 |
 | `ToolResultBlock` | 工具执行结果卡片 | toolCall (含 result, success, duration_ms) | 无 |
 | `InputBar` | 输入与发送/取消（自动增长高度） | isStreaming, disabled | onSubmit, onCancel |
-| `ProviderSettingsPage` | 提供商配置管理页面（增删改），对接真实 API | providers, models（来自 provider-store） | 无 |
+| `ProviderSettingsPage` | 提供商配置管理页面（增删改），对接真实 API | providers, models（来自 TanStack Query） | 无 |
 | `ProviderForm` | 提供商添加/编辑表单弹窗 | isOpen, initialData?, title | onSave(data), onCancel |
 | `ModelList` | 管理指定提供商下的模型列表（添加/删除） | providerId, models[] | 无 |
-| `ToolSettingsPage` | 工具管理页面（本地 toggle 状态） | 无（内部 mock） | 无 |
+| `ToolSettingsPage` | 工具管理页面（对接 `GET /api/v1/tools`） | tools (TanStack Query) | 无 |
 | `ScrollToBottomButton` | "回到最新"浮动按钮 | visible, onClick | 无 |
 | `ConnectionStatusBanner` | 连接状态提示横幅 | status (disconnected/connecting/connected/error) | 无 |
 | `Toast` + `ToastContainer` | 瞬态通知容器（Zustand store + 渲染组件） | 无（内部 store） | onDismiss（自动 / 手动） |
@@ -288,7 +292,7 @@ MessageList 渲染历史消息，滚动到底部
 POST /sessions → 创建会话
     │
     ▼
-更新 session-store 追加新会话
+invalidateQueries(['sessions']) → TanStack Query 自动刷新列表
     │
     ▼
 导航到 /chat/{new_session_id}
@@ -315,8 +319,8 @@ POST /sessions → 创建会话
     ▼
 DELETE /sessions/{id}
     │
-    ├── 成功 → 从 session-store 移除该会话（乐观更新）
-    └── 失败 → 回滚列表，Toast 通知错误
+    ├── 成功 → invalidateQueries(['sessions']) → TanStack Query 自动刷新
+    └── 失败 → Toast 通知错误
 ```
 
 ## 实现差异说明
@@ -333,20 +337,21 @@ DELETE /sessions/{id}
 | Keyboard shortcuts | Ctrl+N 新建会话、方向键导航等 | 仅实现 Ctrl+B 切换 Sidebar |
 | ErrorBoundary | 未在组件表中列出 | 已在 AppShell 中集成 |
 | ProviderSettings | 独立组件 | 页面级文件，已对接真实 API，支持完整 CRUD |
-| ToolSettings | 独立组件 | 页面级文件，仍使用 mock 数据（后端未实现） |
-| 主题切换 | 跟随系统 + 手动覆盖 | ui-store 中有 theme 状态，但 `.dark` CSS class 切换逻辑未接入 |
+| ToolSettings | 独立组件 | 页面级文件，已对接 `GET /api/v1/tools`（只读列表，后端 toggle API 待实现） |
+| 主题切换 | 跟随系统 + 手动覆盖 | AppShell useTheme hook 驱动 `.dark` class 切换，支持 system/light/dark 三种模式 |
 | openapi-typescript | 计划使用 | 未使用，API 类型直接在 api.ts 手写 |
 
 > 以上差异不影响核心功能正常运行，可根据后续需求逐步补齐。
 
 ### Store 职责
 
-| Store | 职责 | 关键状态 |
-|-------|------|----------|
-| `session-store` | 会话列表 CRUD、当前活跃会话 | sessions[], activeSessionId, isLoading, error |
-| `chat-store` | 当前会话的消息流、SSE 连接、流式追加 | messages[], connectionStatus (disconnected/connecting/connected/error), streamBuffer, activeRequestId |
-| `provider-store` | 提供商管理 CRUD、模型管理、全局选中 | providers[], models{}, activeSelection, isLoading |
-| `ui-store` | UI 偏好 | sidebarOpen, theme |
+| Store / Hook | 技术 | 职责 | 关键状态 |
+|-------------|------|------|----------|
+| `chat-store` | Zustand | 当前会话的消息流、SSE 连接、流式追加 | messages[], connectionStatus, streamBuffer, activeRequestId |
+| `toast-store` | Zustand | Toast 通知队列 | toasts[] |
+| `ui-store` | Zustand | UI 偏好 | sidebarOpen, theme |
+| `use-sessions` hooks | TanStack Query | 会话列表 CRUD + 分页加载 | sessions[], isLoading |
+| `use-providers` hooks | TanStack Query | 提供商/模型 CRUD + 全局选中 | providers[], models{}, activeSelection |
 
 ### Session Store 状态转换
 

@@ -807,10 +807,16 @@ class OpenAIProvider(BaseProvider):
                                     )
                                 )
                             )
-            logger.debug("OpenAI stream completed: model={}, chunks={}", model, len(chunks))
+            logger.debug(
+                "OpenAI stream completed: model={}, chunks={}", model, len(chunks)
+            )
             return self._parse_chunks(chunks)
         except asyncio.TimeoutError:
-            logger.error("OpenAI stream timeout: model={}, idle_timeout_s={}", model, idle_timeout_s)
+            logger.error(
+                "OpenAI stream timeout: model={}, idle_timeout_s={}",
+                model,
+                idle_timeout_s,
+            )
             return LLMResponse(
                 content=f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds",
                 finish_reason="error",

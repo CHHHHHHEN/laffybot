@@ -41,7 +41,9 @@ def decrypt_api_key(ciphertext: str) -> str:
         return fernet.decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:
         logger.error("API key decryption failed: invalid token or key")
-        raise ProviderConfigError("API key decryption failed: invalid token or key") from exc
+        raise ProviderConfigError(
+            "API key decryption failed: invalid token or key"
+        ) from exc
     except Exception as exc:
         logger.error("API key decryption failed: {}", exc)
         raise ProviderConfigError(f"API key decryption failed: {exc}") from exc

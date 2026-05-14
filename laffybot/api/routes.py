@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -12,8 +13,15 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from laffybot import __version__
-from laffybot.agent.events import SSEEvent, event_error
-from laffybot.api.dependencies import get_provider_store, get_session_manager, get_store
+from laffybot.agent.events import SSEEvent, event_error, event_ping
+from laffybot.agent.heartbeat import HeartbeatManager
+from laffybot.agent.tools.registry import ToolRegistry
+from laffybot.api.dependencies import (
+    get_provider_store,
+    get_session_manager,
+    get_store,
+    get_tool_registry,
+)
 from laffybot.api.schemas import (
     ActiveSelectionResponse,
     ActiveSelectionUpdateRequest,
@@ -97,18 +105,31 @@ async def _stream_session_events(
 ) -> AsyncGenerator[str, None]:
     del last_event_id
     event_index = 0
+    heartbeat = HeartbeatManager()
+
+    ait = manager.send_message(session_id, content).__aiter__()
+    heartbeat.reset()
+
     try:
-        async for event in manager.send_message(session_id, content):
-            event_index += 1
-            yield _sse_frame(event, f"evt_{event_index}")
+        while True:
+            try:
+                event = await asyncio.wait_for(
+                    ait.__anext__(),
+                    timeout=heartbeat.interval_s,
+                )
+                event_index += 1
+                yield _sse_frame(event, f"evt_{event_index}")
+                heartbeat.reset()
+            except asyncio.TimeoutError:
+                event_index += 1
+                yield _sse_frame(event_ping(), f"evt_{event_index}")
+    except StopAsyncIteration:
+        pass
     except SessionNotFoundError as exc:
         logger.error("SSE stream error: session_id={}, error={}", session_id, exc)
         event_index += 1
         yield _sse_frame(
-            event_error(
-                code="SESSION_NOT_FOUND",
-                message=str(exc),
-            ),
+            event_error(code="SESSION_NOT_FOUND", message=str(exc)),
             f"evt_{event_index}",
         )
         yield "event: done\ndata: {}\n\n"
@@ -125,11 +146,18 @@ async def _stream_session_events(
         yield _sse_frame(event_error(code=code, message=str(exc)), f"evt_{event_index}")
         yield "event: done\ndata: {}\n\n"
         return
+    finally:
+        heartbeat.stop()
 
 
 # ─── Session Routes ────────────────────────────────────────────────────────────
 
-@router.post("/sessions", response_model=SessionResponse, status_code=http_status.HTTP_201_CREATED)
+
+@router.post(
+    "/sessions",
+    response_model=SessionResponse,
+    status_code=http_status.HTTP_201_CREATED,
+)
 async def create_session(
     payload: SessionCreateRequest,
     manager: SessionManager = Depends(get_session_manager),
@@ -157,7 +185,9 @@ async def list_sessions(
     offset: int = 0,
     manager: SessionManager = Depends(get_session_manager),
 ) -> dict[str, object]:
-    sessions, total = await manager.list_sessions(status=status, limit=limit, offset=offset)
+    sessions, total = await manager.list_sessions(
+        status=status, limit=limit, offset=offset
+    )
     return {
         "sessions": [
             {
@@ -192,7 +222,11 @@ async def send_message(
     manager: SessionManager = Depends(get_session_manager),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    logger.info("API request: POST /sessions/{}/messages, content_len={}", session_id, len(payload.content))
+    logger.info(
+        "API request: POST /sessions/{}/messages, content_len={}",
+        session_id,
+        len(payload.content),
+    )
     session = await manager.get_session_info(session_id)
     if session.status == "busy":
         raise SessionBusyError(session_id, session.current_request_id)
@@ -227,6 +261,7 @@ async def delete_session(
 
 # ─── Health Routes ─────────────────────────────────────────────────────────────
 
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> dict[str, object]:
     return {
@@ -247,18 +282,20 @@ async def ready(store: SessionStore = Depends(get_store)) -> dict[str, object]:
 
 # ─── Provider Routes ───────────────────────────────────────────────────────────
 
+
 @router.get("/providers", response_model=list[ProviderResponse])
 async def list_providers(
     provider_store: ProviderStore = Depends(get_provider_store),
 ) -> list[dict[str, object]]:
     providers = await provider_store.list_providers()
-    return [
-        _serialize_provider(p)
-        for p in providers
-    ]
+    return [_serialize_provider(p) for p in providers]
 
 
-@router.post("/providers", response_model=ProviderResponse, status_code=http_status.HTTP_201_CREATED)
+@router.post(
+    "/providers",
+    response_model=ProviderResponse,
+    status_code=http_status.HTTP_201_CREATED,
+)
 async def create_provider(
     payload: ProviderCreateRequest,
     provider_store: ProviderStore = Depends(get_provider_store),
@@ -348,12 +385,15 @@ async def list_models(
 ) -> list[dict[str, object]]:
     models = await provider_store.list_models(provider_id)
     return [
-        {"id": m.model_id, "provider_id": m.provider_id, "name": m.name}
-        for m in models
+        {"id": m.model_id, "provider_id": m.provider_id, "name": m.name} for m in models
     ]
 
 
-@router.post("/providers/{provider_id}/models", response_model=ModelResponse, status_code=http_status.HTTP_201_CREATED)
+@router.post(
+    "/providers/{provider_id}/models",
+    response_model=ModelResponse,
+    status_code=http_status.HTTP_201_CREATED,
+)
 async def add_model(
     provider_id: str,
     payload: ModelCreateRequest,
@@ -381,7 +421,11 @@ async def test_provider(
     config = await provider_store.get_provider_config(provider_id)
     models = await provider_store.list_models(provider_id)
     if not models:
-        return {"success": False, "message": "No models configured for this provider", "latency_ms": None}
+        return {
+            "success": False,
+            "message": "No models configured for this provider",
+            "latency_ms": None,
+        }
 
     from openai import AsyncOpenAI
 
@@ -396,17 +440,51 @@ async def test_provider(
         )
         latency = int((time.perf_counter() - start) * 1000)
         if response.choices:
-            return {"success": True, "message": "Connection successful", "latency_ms": latency}
-        return {"success": False, "message": "Unexpected response format", "latency_ms": latency}
+            return {
+                "success": True,
+                "message": "Connection successful",
+                "latency_ms": latency,
+            }
+        return {
+            "success": False,
+            "message": "Unexpected response format",
+            "latency_ms": latency,
+        }
     except Exception as exc:
         latency = int((time.perf_counter() - start) * 1000)
         exc_str = str(exc)
-        if "timeout" in exc_str.lower() or "connect" in exc_str.lower() or "NameResolutionError" in type(exc).__name__:
+        if (
+            "timeout" in exc_str.lower()
+            or "connect" in exc_str.lower()
+            or "NameResolutionError" in type(exc).__name__
+        ):
             raise ProviderConnectionError(f"Connection failed: {exc}") from exc
-        return {"success": False, "message": f"Test failed: {exc}", "latency_ms": latency}
+        return {
+            "success": False,
+            "message": f"Test failed: {exc}",
+            "latency_ms": latency,
+        }
+
+
+# ─── Tool Routes ────────────────────────────────────────────────────────────────
+
+
+@router.get("/tools")
+async def list_tools(
+    registry: ToolRegistry = Depends(get_tool_registry),
+) -> list[dict[str, object]]:
+    return [
+        {
+            "name": tool.name,
+            "description": tool.description,
+            "read_only": tool.read_only,
+        }
+        for tool in sorted(registry._tools.values(), key=lambda t: t.name)
+    ]
 
 
 # ─── Serializers ───────────────────────────────────────────────────────────────
+
 
 def _serialize_provider(p: ProviderRow) -> dict[str, object]:
     return {

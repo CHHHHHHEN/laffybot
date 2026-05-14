@@ -23,7 +23,9 @@ class ProviderConnectionError(ProviderError):
 
 class NoActiveProviderError(ProviderError):
     def __init__(self) -> None:
-        super().__init__("No active provider selected. Please configure a provider and select a model.")
+        super().__init__(
+            "No active provider selected. Please configure a provider and select a model."
+        )
 
 
 class ModelNotFoundError(ProviderError):
@@ -36,4 +38,6 @@ class ModelNameConflictError(ProviderError):
     def __init__(self, name: str, provider_id: str) -> None:
         self.name = name
         self.provider_id = provider_id
-        super().__init__(f"Model '{name}' already exists under provider '{provider_id}'")
+        super().__init__(
+            f"Model '{name}' already exists under provider '{provider_id}'"
+        )

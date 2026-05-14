@@ -298,6 +298,18 @@ export function checkHealth() {
   return apiRequest<{ status: string; version: string; timestamp: string }>('/api/v1/health')
 }
 
+/* ---- Tools API ---- */
+
+export interface ToolInfo {
+  name: string
+  description: string
+  read_only: boolean
+}
+
+export function listTools() {
+  return apiRequest<ToolInfo[]>('/api/v1/tools')
+}
+
 /* ---- Types ---- */
 
 export type SseEventType =

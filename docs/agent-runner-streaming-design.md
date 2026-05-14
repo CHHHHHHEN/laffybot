@@ -121,7 +121,7 @@ session_start
 | `OpenAIProvider` | `laffybot/providers/openai.py` | ✅ 已实现流式支持，支持 `reasoning_content` |
 | `SSEEvent` | `laffybot/agent/events.py` | ✅ 完整事件类型定义 |
 | `CancellationToken` | `laffybot/agent/cancellation.py` | ✅ 取消机制 |
-| `HeartbeatManager` | `laffybot/agent/heartbeat.py` | ✅ 组件已实现，但尚未接入 `run_stream()` |
+| `HeartbeatManager` | `laffybot/agent/heartbeat.py` | ✅ 已实现并接入 SSE 路由 `_stream_session_events()` |
 | `StreamChunk` | `laffybot/providers/types.py` | ✅ 流式增量数据结构 |
 | `ToolCallDelta` | `laffybot/providers/types.py` | ✅ 工具调用增量结构 |
 
@@ -141,7 +141,7 @@ session_start
 3. **流式集成**：`chat_completion_stream()` 已在 `AgentRunner` 中使用 ✅
 4. **工具追踪**：工具执行计时和状态追踪已实现 ✅
 5. **取消机制**：请求取消和资源清理机制已实现 ✅
-6. **心跳保活**：`HeartbeatManager` 已实现，但当前未由 `AgentRunner.run_stream()` 或 API SSE 路由调度
+6. **心跳保活**：`HeartbeatManager` 已实现，并通过 `_stream_session_events()` 中的 `asyncio.wait_for` 集成到 SSE 路由
 
 ---
 
@@ -197,7 +197,7 @@ session_start
 
 **变更范围**：
 - 异常处理和 `error` 事件 ✅
-- `ping` 事件和心跳组件已实现为独立模块，但尚未接入当前 SSE 主流程 ⚠️
+- `ping` 事件和心跳组件已实现并接入 SSE 主流程 ✅
 - 取消机制和 `cancelled` 事件 ✅
 
 **错误分类与处理**：
@@ -205,12 +205,13 @@ session_start
 | 错误类型 | 错误代码 | 处理策略 | 恢复行为 | 示例 |
 |---------|---------|---------|---------|------|
 | LLM 错误 | `LLM_ERROR` | 产生 error 事件 | 终止当前请求，返回 done 事件 | API 超时、速率限制 |
-| 工具错误 | `TOOL_ERROR` | 记录错误 | 将错误结果返回 LLM，继续下一轮迭代 | 工具执行异常 |
+| 工具错误 | `TOOL_ERROR` | 产生 tool_result(success=false) | 将错误结果返回 LLM，继续下一轮迭代 | 文件未找到、路径越权 |
+| 工具异常 | `TOOL_EXECUTION_ERROR` | raise ToolError → 被 AgentRunner 捕获 | 返回 tool_result(success=false, error_message)，继续迭代 | PermissionError, ValueError |
 | 流式错误 | `STREAM_ERROR` | 关闭连接 | 立即终止，清理资源，不产生 done 事件 | 连接中断 |
 | 内部错误 | `INTERNAL_ERROR` | 记录日志 | 终止当前请求，返回通用错误消息 | 代码 bug |
 | 取消错误 | `CANCELLED` | 清理资源 | 产生 cancelled 事件，正常结束 | 用户取消 |
 
-> **当前代码注记：** `AgentRunner.run_stream()` 直接发出的运行时 `error.code` 主要是 `LLM_ERROR` 和 `INTERNAL_ERROR`；工具执行异常当前会以 `tool_result(success=false)` 返回，不会单独产生 `TOOL_ERROR` 事件。`STREAM_ERROR` 和 `TOOL_ERROR` 仍更偏向设计预留。
+> **当前代码注记：** `AgentRunner.run_stream()` 直接发出的运行时 `error.code` 主要是 `LLM_ERROR` 和 `INTERNAL_ERROR`；工具执行异常会以 `tool_result(success=false)` 返回。`ToolError` 领域异常已定义并在 `ToolRegistry.execute()` 和 `app.py` 的 FastAPI 异常处理器中注册。
 
 **错误恢复策略详解**：
 
@@ -272,7 +273,7 @@ session_start
 **规范要求**：
 - 异常必须转换为 `error` 事件，不应中断事件流
 - `error` 事件后必须产生 `done` 事件（`stop_reason="error"`）
-- 连接空闲超过 15 秒必须产生 `ping` 事件（当前实现仅在独立 `HeartbeatManager` 中提供，尚未接入 `run_stream()`）
+- 连接空闲超过 15 秒必须产生 `ping` 事件（通过 `_stream_session_events()` 中的 `asyncio.wait_for` 实现）
 
 ---
 
@@ -444,9 +445,9 @@ AgentRunner.run_stream() (检查取消状态)
 
 ### 与流式输出的集成
 
-- `HeartbeatManager` 作为独立组件已实现，但当前未由流式主流程调度 ⚠️
-- `AgentRunner.run_stream()` 在当前代码中尚未通知 `HeartbeatManager` ⚠️
-- 流式结束时取消心跳任务是设计目标，当前路由层未接入该任务 ⚠️
+- `HeartbeatManager` 作为独立组件已实现 ✅
+- SSE 路由 `_stream_session_events()` 中使用 `asyncio.wait_for()` 在每次事件后等待 15s 空闲超时，超时则发送 `ping` 事件 ✅
+- 流结束时通过 `finally` 块调用 `heartbeat.stop()` 清理 ✅
 
 ---
 

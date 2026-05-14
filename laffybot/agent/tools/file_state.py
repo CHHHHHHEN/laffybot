@@ -38,7 +38,9 @@ class FileStates:
     def __init__(self) -> None:
         self._state: dict[str, ReadState] = {}
 
-    def record_read(self, path: str | Path, offset: int = 1, limit: int | None = None) -> None:
+    def record_read(
+        self, path: str | Path, offset: int = 1, limit: int | None = None
+    ) -> None:
         """Record that a file was read (called after successful read)."""
         p = str(Path(path).resolve())
         try:
@@ -94,7 +96,9 @@ class FileStates:
             return "Warning: file has been modified since last read. Re-read to verify content before editing."
         return None
 
-    def is_unchanged(self, path: str | Path, offset: int = 1, limit: int | None = None) -> bool:
+    def is_unchanged(
+        self, path: str | Path, offset: int = 1, limit: int | None = None
+    ) -> bool:
         """Return True if file was previously read with same params and content is unchanged."""
         p = str(Path(path).resolve())
         entry = self._state.get(p)

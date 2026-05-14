@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MessageSquarePlus } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { ChatHeader } from '@/components/chat/ChatHeader'
 import { MessageList } from '@/components/chat/MessageList'
 import { InputBar } from '@/components/chat/InputBar'
 import { NewSessionDialog } from '@/components/ui/NewSessionDialog'
 import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner'
+import { Button } from '@/components/ui/Button'
 import { useChatStore } from '@/stores/chat-store'
-import { useSessionStore, type Session } from '@/stores/session-store'
+import { useSessions, useCreateSession, useUpdateSessionStatus } from '@/hooks/use-sessions'
 import { connectSseStream } from '@/lib/sse'
 import type { SseEvent } from '@/lib/sse'
 import { getHistory, cancelRequest } from '@/lib/api'
@@ -16,6 +18,7 @@ import { useToastStore } from '@/stores/toast-store'
 export function ChatPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -23,24 +26,12 @@ export function ChatPage() {
   const messages = useChatStore((s) => s.messages)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const connectionStatus = useChatStore((s) => s.connectionStatus)
-  const session = useSessionStore((s) =>
-    sessionId ? s.sessions.find((sess: Session) => sess.session_id === sessionId) ?? null : null
-  )
+  const sessionsQuery = useSessions()
+  const allSessions = sessionsQuery.data?.pages.flatMap((p) => p.sessions) ?? []
+  const session = sessionId ? allSessions.find((s) => s.session_id === sessionId) ?? null : null
 
-  const fetchSessions = useSessionStore((s) => s.fetchSessions)
-  const createSession = useSessionStore((s) => s.createSession)
-  const setActiveSession = useSessionStore((s) => s.setActiveSession)
-  const updateSessionStatus = useSessionStore((s) => s.updateSessionStatus)
-
-  // Load sessions on mount
-  useEffect(() => {
-    fetchSessions()
-  }, [fetchSessions])
-
-  // Set active session
-  useEffect(() => {
-    setActiveSession(sessionId ?? null)
-  }, [sessionId, setActiveSession])
+  const createSession = useCreateSession()
+  const updateSessionStatus = useUpdateSessionStatus()
 
   // Load history on session switch
   useEffect(() => {
@@ -103,8 +94,7 @@ export function ChatPage() {
           chat.setIsStreaming(false)
           chat.setActiveRequestId(null)
           updateSessionStatus(sessionId!, 'idle')
-          // Refresh session to get updated message_count
-          useSessionStore.getState().refreshSession(sessionId!)
+          queryClient.invalidateQueries({ queryKey: ['sessions'] })
           break
         case 'error':
           chat.flushStreamBuffer()
@@ -121,11 +111,10 @@ export function ChatPage() {
           updateSessionStatus(sessionId!, 'idle')
           break
         case 'ping':
-          // no-op
           break
       }
     },
-    [sessionId, updateSessionStatus]
+    [sessionId, updateSessionStatus, queryClient]
   )
 
   const handleSubmit = useCallback(
@@ -144,7 +133,6 @@ export function ChatPage() {
 
       chatStoreActions.setIsStreaming(true)
 
-      // Create an empty assistant message for streaming
       chatStoreActions.appendMessage({
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -181,10 +169,13 @@ export function ChatPage() {
     async (systemPrompt: string, maxIterations: number) => {
       setDialogError(null)
       try {
-        const session = await createSession({ system_prompt: systemPrompt || undefined, max_iterations: maxIterations })
-        if (session) {
+        const newSession = await createSession.mutateAsync({
+          system_prompt: systemPrompt || undefined,
+          max_iterations: maxIterations,
+        })
+        if (newSession) {
           setShowNewDialog(false)
-          navigate(`/chat/${session.session_id}`)
+          navigate(`/chat/${newSession.session_id}`)
         }
       } catch (err) {
         setDialogError(err instanceof Error ? err.message : '创建会话失败')
@@ -203,14 +194,13 @@ export function ChatPage() {
           <p className="text-[var(--color-text-secondary)] mb-6">
             选择或创建一个会话开始对话
           </p>
-          <button
+          <Button
             onClick={() => setShowNewDialog(true)}
-            className="inline-flex items-center gap-2 rounded-md bg-[var(--color-brand)] text-white px-4 py-2 text-sm font-medium hover:bg-[var(--color-brand-hover)] transition-colors duration-150"
             aria-label="新建会话"
           >
             <MessageSquarePlus size={18} />
             新建会话
-          </button>
+          </Button>
         </div>
 
         {showNewDialog && (
@@ -252,7 +242,6 @@ export function ChatPage() {
   )
 }
 
-// Keep a reference to chat store actions to avoid stale closures
 const chatStoreActions = {
   appendMessage: (msg: Parameters<ReturnType<typeof useChatStore.getState>['appendMessage']>[0]) =>
     useChatStore.getState().appendMessage(msg),

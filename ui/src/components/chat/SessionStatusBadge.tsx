@@ -1,12 +1,12 @@
-import type { Session } from '@/stores/session-store'
+type SessionStatus = 'idle' | 'busy' | 'error'
 
-const statusConfig: Record<Session['status'], { label: string; color: string }> = {
+const statusConfig: Record<SessionStatus, { label: string; color: string }> = {
   idle: { label: '就绪', color: 'bg-[var(--color-success)]' },
   busy: { label: '处理中', color: 'bg-[var(--color-info)]' },
   error: { label: '错误', color: 'bg-[var(--color-error)]' },
 }
 
-export function SessionStatusBadge({ status }: { status: Session['status'] }) {
+export function SessionStatusBadge({ status }: { status: SessionStatus }) {
   const config = statusConfig[status]
   return (
     <span className="inline-flex items-center gap-1.5 text-caption text-[var(--color-text-secondary)]">

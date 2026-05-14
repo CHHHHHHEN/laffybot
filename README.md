@@ -43,7 +43,8 @@ laffybot/
 │   │   ├── cancellation.py      # CancellationToken 取消机制
 │   │   ├── heartbeat.py         # HeartbeatManager 心跳保活
 │   │   └── tools/               # 工具系统
-│   │       ├── base.py          # Tool/Schema 抽象基类 + @tool_parameters
+│   │       ├── base.py          # Tool 抽象基类 + Pydantic @tool_parameters
+│   │       ├── errors.py        # ToolError 领域异常
 │   │       └── registry.py      # ToolRegistry 注册/执行
 │   │
 │   ├── providers/               # LLM 提供商抽象层
@@ -87,10 +88,10 @@ laffybot/
 │       │   ├── sse.ts           # SSE 类型重导出
 │       │   └── utils.ts         # cn() classnames 工具
 │       │
-│       ├── stores/              # Zustand 状态管理
-│       │   ├── chat-store.ts    # 消息流 + SSE 连接状态 + streamBuffer
-│       │   ├── session-store.ts # 会话列表 CRUD + 分页
-│       │   └── ui-store.ts      # 侧边栏 + 主题偏好
+│       ├── stores/              # 状态管理
+│       │   ├── chat-store.ts    # Zustand: 消息流 + SSE 连接状态 + streamBuffer
+│       │   ├── toast-store.ts   # Zustand: Toast 通知队列
+│       │   └── ui-store.ts      # Zustand: 侧边栏 + 主题偏好
 │       │
 │       ├── pages/               # 页面级组件
 │       │   ├── ChatPage.tsx      # 聊天主页（SSE 事件分发）
@@ -117,16 +118,21 @@ laffybot/
 │       │   │   └── NavLinks.tsx  # 导航链接
 │       │   │
 │       │   └── ui/              # 通用 UI 组件
+│       │       ├── Button.tsx    # 按钮 (brand/ghost/danger/icon/link)
+│       │       ├── Input.tsx     # Input / Textarea / Select
+│       │       ├── Modal.tsx     # 模态对话框 (Escape 关闭 + 遮罩层)
+│       │       ├── Collapsible.tsx  # 可折叠面板
 │       │       ├── NewSessionDialog.tsx
 │       │       ├── ConfirmDialog.tsx
 │       │       ├── ErrorBoundary.tsx
 │       │       ├── Toast.tsx     # Toast 通知（Zustand store + 渲染）
 │       │       └── ConnectionStatusBanner.tsx
 │       │
-│       ├── hooks/
-│       │   └── useKeyboardShortcuts.ts   # Ctrl+B 切换侧边栏
-│       │
-│       └── types/               # (空目录，类型定义内联在 lib/api.ts)
+│   ├── hooks/
+│   │   ├── useKeyboardShortcuts.ts   # Ctrl+B 切换侧边栏
+│   │   ├── use-sessions.ts           # TanStack Query: 会话列表/创建/删除/状态更新
+│   │   └── use-providers.ts          # TanStack Query: 提供商/模型/当前选中 + mutations
+│   │
 │
 └── docs/                        # 技术文档（中文）
     ├── readme-document-content-guidelines.md  # 文档撰写规范
@@ -261,6 +267,7 @@ idle ──(发送消息)──→ busy ──(完成)──→ idle
 | GET | `/api/v1/sessions/{id}/history` | 获取消息历史 |
 | GET | `/api/v1/health` | 健康检查 |
 | GET | `/api/v1/ready` | 就绪检查（含数据库检测） |
+| GET | `/api/v1/tools` | 列出已注册工具（name, description, read_only） |
 
 ### 3.8 配置项
 
@@ -286,7 +293,7 @@ idle ──(发送消息)──→ busy ──(完成)──→ idle
 - **框架**: React 19 + TypeScript 6
 - **构建**: Vite 8 + Tailwind CSS 4
 - **路由**: React Router 7（嵌套路由 + layout route）
-- **状态**: Zustand 5（三个独立 store）
+- **状态**: Zustand 5（三个独立 store）+ TanStack Query 5（数据缓存/SSR/mutations）
 - **SSE**: 基于 `fetch` + `ReadableStream` 手动解析
 - **图标**: lucide-react
 - **Markdown**: react-markdown + remark-gfm + rehype-highlight
@@ -294,12 +301,13 @@ idle ──(发送消息)──→ busy ──(完成)──→ idle
 
 ### 4.2 Store 职责
 
-| Store | 关键状态 | 职责 |
+| Store / Hook | 关键状态 | 职责 |
 |-------|----------|------|
-| `chat-store` | messages[], isStreaming, streamBuffer, connectionStatus, activeRequestId | 消息流 + SSE 事件处理 + 流缓冲区 |
-| `session-store` | sessions[], activeSessionId, isLoading, error | 会话列表 CRUD + 分页加载 |
-| `provider-store` | providers[], models{}, activeSelection, isLoading | 提供商/模型 CRUD + 全局选中管理 |
-| `ui-store` | sidebarOpen, theme | 侧边栏折叠 + 主题切换 |
+| `chat-store` (Zustand) | messages[], isStreaming, streamBuffer, connectionStatus, activeRequestId | 消息流 + SSE 事件处理 + 流缓冲区 |
+| `toast-store` (Zustand) | toasts[] | Toast 通知队列 |
+| `ui-store` (Zustand) | sidebarOpen, theme | 侧边栏折叠 + 主题切换 |
+| `use-sessions` (TanStack Query) | sessions[], isLoading, error | 会话列表无限查询 + 创建/删除 mutations |
+| `use-providers` (TanStack Query) | providers[], models{}, activeSelection | 提供商/模型查询 + CRUD mutations |
 
 ### 4.3 流式渲染机制
 
@@ -327,24 +335,24 @@ AppShell
 ├── Sidebar
 │   ├── NavLinks (聊天 / 设置)
 │   ├── GlobalModelSelector
-│   ├── NewSessionDialog (只读展示全局选中)
-│   ├── ConfirmDialog
+│   ├── NewSessionDialog (Modal + Button + Input)
+│   ├── ConfirmDialog (Modal + Button)
 │   └── 会话列表（内联）
 └── Outlet
     ├── ChatPage
-    │   ├── ChatHeader
+    │   ├── ChatHeader (Button)
     │   ├── ConnectionStatusBanner
     │   ├── MessageList → MessageBubble → StreamMessage
-    │   │   ├── ReasoningBlock
+    │   │   ├── ReasoningBlock (Collapsible)
     │   │   ├── ToolCallCard / ToolResultBlock
     │   │   └── react-markdown 渲染
-    │   ├── InputBar
+    │   ├── InputBar (Button + Textarea)
     │   └── ScrollToBottomButton
     └── SettingsPage
         ├── ProviderSettingsPage（对接真实 API）
-        │   ├── ProviderForm
-        │   └── ModelList
-        └── ToolSettingsPage（toggle）
+        │   ├── ProviderForm (Modal + Button + Input)
+        │   └── ModelList (Button + Input)
+        └── ToolSettingsPage（对接真实 API）
 ```
 
 ---
@@ -363,7 +371,7 @@ AppShell
 ### 5.2 功能方面
 
 1. **无 tiktoken 依赖**: Token 计数使用近似估算（CJK: 2 字符/token, 拉丁: 4 字符/token），优先使用 LLM 返回的 exact usage
-2. **工具参数校验**: 使用 JSON Schema 片段 + `@tool_parameters` 装饰器
+2. **工具参数校验**: 使用 Pydantic `BaseModel` + `@tool_parameters` 装饰器生成 JSON Schema，Pydantic 原生处理类型校验/coercion
 3. **工具 ID 规范化**: 统一为 9 字符 alphanumeric（SHA1 截断或随机生成）
 4. **POST-based SSE**: 不使用 `EventSource`，而是 `fetch` + `ReadableStream`，支持 `AbortController` 取消
 5. **多提供商管理**: 通过 UI 配置多个 LLM 提供商及模型，API Key 加密存储
@@ -372,21 +380,18 @@ AppShell
 ### 5.3 前端方面
 
 1. **无 openapi-typescript**: 类型定义手写（后端 API 稳定，维护成本低）
-2. **无 TanStack Query**: Zustand + fetch 更轻量（核心是 SSE 推送而非请求缓存）
-3. **无 shadcn/ui**: 虽然有选型文档提到，但实际未使用（组件均手写）
+2. **TanStack Query + Zustand 并存**: TanStack Query 处理服务端数据缓存和 mutations（会话/提供商 CRUD），Zustand 保留给客户端流式状态（chat-store）和 UI 状态（ui-store, toast-store）
+3. **无 shadcn/ui**: 组件均手写（Button/Input/Modal/Collapsible）
 4. **无 Tauri**: 桌面端规划中，未实现
-5. **主题切换待接入**: CSS 变量已定义但 `.dark` class 切换逻辑未接入
+5. **主题切换已接入**: CSS 变量定义的 `.dark` class 由 AppShell 中的 useTheme hook 自动切换
 
 ---
 
 ## 七、已知问题/待办项
 
 1. ❌ 测试用例完全缺失
-2. ⚠️ 心跳 `HeartbeatManager` 已实现但未接入 SSE 主流程
-3. ⚠️ 暗色模式 `.dark` CSS class 切换未接入
-4. ⚠️ 前端未实现响应式 tablet/mobile 断点区分
-5. ⚠️ 工具管理页面仍使用 mock 数据，后端工具 toggle API 未实现
-6. ⚠️ 前端 `types/` 目录未使用（空）——类型定义在 `lib/api.ts` 中
+2. ⚠️ 工具管理页面后端 toggle API 待实现（当前为只读列表）
+3. ⚠️ 前端未实现响应式 tablet/mobile 断点区分
 
 ---
 

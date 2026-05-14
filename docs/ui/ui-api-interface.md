@@ -27,7 +27,8 @@
 | `DELETE /api/v1/sessions/{id}` | 用户确认删除 | `ConfirmDialog` 确认 → `session-store` 移除 |
 | `GET /api/v1/sessions/{id}/history` | 会话切换 / 上滚加载更多 | `chat-store` 加载历史消息 |
 | `GET /api/v1/health` | 应用启动 / 降级检测 | `ConnectionStatusBanner` |
-| `GET /api/v1/providers` | 应用启动 / 设置页面加载 | `providerStore` 拉取全量列表 |
+| `GET /api/v1/tools` | 工具管理页面加载 | 显示工具列表（name, description, read_only） |
+| `GET /api/v1/providers` | 应用启动 / 设置页面加载 | `useProviders` 查询 |
 | `POST /api/v1/providers` | 用户提交添加提供商表单 | `ProviderForm` 确认 → `providerStore` 追加 |
 | `PUT /api/v1/providers/{id}` | 用户提交编辑提供商表单 | `ProviderForm` 确认 → `providerStore` 更新 |
 | `DELETE /api/v1/providers/{id}` | 用户确认删除提供商 | 确认对话框 → `providerStore` 移除 |
@@ -36,7 +37,7 @@
 | `DELETE /api/v1/providers/{id}/models/{mid}` | 用户点击模型删除按钮 | `ModelList` 移除 → `providerStore` 删除 |
 | `POST /api/v1/providers/{id}/test` | 用户点击测试连接按钮 | 显示成功/失败 Toast |
 | `GET /api/v1/providers/active` | 应用启动 / 导航切换 | `providerStore` 设置全局选中 |
-| `PUT /api/v1/providers/active` | 用户点击 GlobalModelSelector 应用按钮 | `providerStore` 更新选中 → 即刻生效 |
+| `PUT /api/v1/providers/active` | 用户切换 GlobalModelSelector 下拉选项 | `useSetActiveSelection` mutation → 即时提交 |
 
 ### 分页约定
 
