@@ -103,10 +103,21 @@ class AgentRunner:
 
                 log.debug("LLM request started: iteration={}", iteration)
 
-                # Request LLM with streaming - events are put in queue
-                response = await self._request_model_stream_with_events(
-                    spec, messages, event_queue, token
+                # Run LLM streaming in background task,
+                # consume events concurrently in real-time
+                task = asyncio.create_task(
+                    self._request_model_stream_with_events(
+                        spec, messages, event_queue, token
+                    )
                 )
+
+                while True:
+                    event = await event_queue.get()
+                    if event is None:
+                        break
+                    yield event
+
+                response = await task
                 self._accumulate_usage(usage, response.usage)
 
                 log.debug(
@@ -114,13 +125,6 @@ class AgentRunner:
                     len(response.content or ""),
                     len(response.tool_calls or []),
                 )
-
-                # Yield all queued content/reasoning events
-                while True:
-                    event = await event_queue.get()
-                    if event is None:
-                        break
-                    yield event
 
                 # Handle tool calls
                 if response.tool_calls:
@@ -254,28 +258,27 @@ class AgentRunner:
         cancellation_token: CancellationToken,
     ) -> LLMResponse:
         """Request LLM with streaming, putting content/reasoning events in queue."""
-        cancellation_token.check()
+        try:
+            cancellation_token.check()
 
-        async def on_chunk(chunk: StreamChunk) -> None:
-            if chunk.content:
-                await event_queue.put(event_content(chunk.content))
-            if chunk.reasoning:
-                await event_queue.put(event_reasoning(chunk.reasoning))
-            # Tool call deltas are accumulated by provider, not emitted here
+            async def on_chunk(chunk: StreamChunk) -> None:
+                if chunk.content:
+                    await event_queue.put(event_content(chunk.content))
+                if chunk.reasoning:
+                    await event_queue.put(event_reasoning(chunk.reasoning))
+                # Tool call deltas are accumulated by provider, not emitted here
 
-        response = await self.provider.chat_completion_stream(
-            messages=messages,
-            model=spec.model,
-            on_chunk=on_chunk,
-            tools=spec.tools.get_definitions(),
-            temperature=spec.temperature,
-            max_tokens=spec.max_tokens,
-        )
-
-        # Signal end of events for this request
-        await event_queue.put(None)
-
-        return response
+            response = await self.provider.chat_completion_stream(
+                messages=messages,
+                model=spec.model,
+                on_chunk=on_chunk,
+                tools=spec.tools.get_definitions(),
+                temperature=spec.temperature,
+                max_tokens=spec.max_tokens,
+            )
+            return response
+        finally:
+            await event_queue.put(None)
 
     def _normalize_tool_result(
         self,
