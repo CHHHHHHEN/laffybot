@@ -100,3 +100,32 @@ export function useClearDefaultSessionModel() {
   })
 }
 
+export function useSummaryModel() {
+  return useQuery({
+    queryKey: ['summaryModel'],
+    queryFn: () => api.getSummaryModel(),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetSummaryModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { provider_id: string; model_name: string }) =>
+      api.setSummaryModel(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['summaryModel'] })
+    },
+  })
+}
+
+export function useClearSummaryModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.clearSummaryModel(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['summaryModel'] })
+    },
+  })
+}
+

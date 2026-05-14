@@ -3,6 +3,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 const tabs = [
   { to: '/settings/provider', label: '提供商配置' },
   { to: '/settings/tools', label: '工具管理' },
+  { to: '/settings/advanced', label: '高级设置' },
 ]
 
 export function SettingsPage() {

@@ -25,6 +25,7 @@
 /settings                设置面板根（重定向到 /settings/provider）
 /settings/provider       提供商配置
 /settings/tools          工具管理
+/settings/advanced       高级设置
 ```
 
 ### 布局骨架
@@ -105,7 +106,7 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 └──────────────────────────────────────────────┘
 ```
 
-### 2. 设置页（/settings, /settings/provider, /settings/tools）
+### 2. 设置页（/settings, /settings/provider, /settings/tools, /settings/advanced）
 
 设置页通过侧边栏内的次级导航切换子页面：
 
@@ -117,7 +118,8 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 │  │  ─────────────── │         │  │              │ │
 │  │  设置            │         │  │  ┌────────┐  │ │
 │  │  ├ 提供商配置 ← 高亮│       │  │  │ 提供商A  │  │ │
-│  │  └ 工具管理      │         │  │  │ 名称     │  │ │
+│  │  ├ 工具管理      │         │  │  │ 名称     │  │ │
+│  │  └ 高级设置      │         │  │  │ Base URL │  │ │
 │  │  ─────────────── │         │  │  │ Base URL │  │ │
 │  │  ... 会话列表     │         │  │  │ 模型列表  │  │ │
 │  │                  │         │  │  │ [编辑删除]│  │ │
@@ -142,6 +144,13 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 - 可用工具列表
 - 每个工具展示：名称、描述、启用/禁用开关
 - 工具的详细配置参数（如文件路径白名单、超时时间等）
+
+#### 高级设置（/settings/advanced）
+- 总结模型配置：指定用于会话标题自动生成的轻量模型
+- 当前配置状态展示：已配置时显示提供商和模型名称
+- 提供商/模型级联选择器：选择提供商后动态加载其模型列表
+- 操作按钮：保存配置、清除配置（恢复未配置状态）
+- 说明文字：解释总结模型用途、推荐选择轻量模型、未配置时的回退行为
 
 > **API 依赖说明**：提供商配置和工具管理页面的增删改操作依赖对应的管理 API。当前后端仅提供会话和消息相关端点，提供商和工具的运行时配置通过服务端 config.json 管理。这些页面的实现在 API 就绪前以只读展示为主，写操作（添加/编辑/删除/启用/禁用）待后续补充 API 后接入。
 
@@ -171,6 +180,7 @@ Sidebar 支持折叠，折叠后只显示图标，为聊天区域提供更多空
 | `ProviderForm` | 提供商添加/编辑表单弹窗 | isOpen, initialData?, title | onSave(data), onCancel |
 | `ModelList` | 管理指定提供商下的模型列表（添加/删除） | providerId, models[] | 无 |
 | `ToolSettingsPage` | 工具管理页面（对接 `GET /api/v1/tools`） | tools (TanStack Query) | 无 |
+| `AdvancedSettingsPage` | 高级设置页面，管理总结模型配置 | providers, models, summaryModel (TanStack Query) | 无 |
 | `ScrollToBottomButton` | "回到最新"浮动按钮 | visible, onClick | 无 |
 | `ConnectionStatusBanner` | 连接状态提示横幅 | status (disconnected/connecting/connected/error) | 无 |
 | `Toast` + `ToastContainer` | 瞬态通知容器（Zustand store + 渲染组件） | 无（内部 store） | onDismiss（自动 / 手动） |

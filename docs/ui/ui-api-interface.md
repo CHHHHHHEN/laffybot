@@ -38,6 +38,12 @@
 | `POST /api/v1/providers/{id}/test` | 用户点击测试连接按钮 | 显示成功/失败 Toast |
 | `GET /api/v1/providers/active` | 应用启动 / 导航切换 | `providerStore` 设置全局选中 |
 | `PUT /api/v1/providers/active` | 用户切换 GlobalModelSelector 下拉选项 | `useSetActiveSelection` mutation → 即时提交 |
+| `GET /api/v1/settings/default-session-model` | 设置页面加载 / 提供商配置页面加载 | `useDefaultSessionModel` 查询 → 显示当前默认配置 |
+| `PUT /api/v1/settings/default-session-model` | 用户设置默认会话模型 | `useSetDefaultSessionModel` mutation → Toast 提示成功 |
+| `DELETE /api/v1/settings/default-session-model` | 用户清除默认会话模型 | `useClearDefaultSessionModel` mutation → Toast 提示成功 |
+| `GET /api/v1/settings/summary-model` | 高级设置页面加载 | `useSummaryModel` 查询 → 显示当前配置 |
+| `PUT /api/v1/settings/summary-model` | 用户保存总结模型配置 | `useSetSummaryModel` mutation → Toast 提示成功 |
+| `DELETE /api/v1/settings/summary-model` | 用户清除总结模型配置 | `useClearSummaryModel` mutation → Toast 提示成功 |
 
 ### 分页约定
 

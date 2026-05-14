@@ -318,6 +318,28 @@ export function clearDefaultSessionModel() {
   })
 }
 
+export interface SummaryModelResponse {
+  provider_id: string
+  model_name: string
+}
+
+export function getSummaryModel() {
+  return apiRequest<SummaryModelResponse | null>('/api/v1/settings/summary-model')
+}
+
+export function setSummaryModel(data: { provider_id: string; model_name: string }) {
+  return apiRequest<void>('/api/v1/settings/summary-model', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function clearSummaryModel() {
+  return apiRequest<void>('/api/v1/settings/summary-model', {
+    method: 'DELETE',
+  })
+}
+
 /* ---- Health API ---- */
 
 export function checkHealth() {

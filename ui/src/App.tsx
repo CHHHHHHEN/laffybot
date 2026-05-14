@@ -4,6 +4,7 @@ import { ChatPage } from '@/pages/ChatPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { ProviderSettingsPage } from '@/pages/ProviderSettingsPage'
 import { ToolSettingsPage } from '@/pages/ToolSettingsPage'
+import { AdvancedSettingsPage } from '@/pages/AdvancedSettingsPage'
 
 const router = createBrowserRouter([
   {
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="/settings/provider" replace /> },
           { path: 'provider', element: <ProviderSettingsPage /> },
           { path: 'tools', element: <ToolSettingsPage /> },
+          { path: 'advanced', element: <AdvancedSettingsPage /> },
         ],
       },
     ],
