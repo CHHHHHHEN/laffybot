@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MessageSquarePlus } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -7,22 +7,32 @@ import { MessageList } from '@/components/chat/MessageList'
 import { InputBar } from '@/components/chat/InputBar'
 import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner'
 import { Button } from '@/components/ui/Button'
-import { useChatStore } from '@/stores/chat-store'
+import {
+  useChatStore,
+  selectActiveSessionMessages,
+  selectActiveSessionIsStreaming,
+  selectActiveSessionConnectionStatus,
+} from '@/stores/chat-store'
 import { useSessions, useCreateSession, useUpdateSessionStatus } from '@/hooks/use-sessions'
 import { connectSseStream } from '@/lib/sse'
 import type { SseEvent } from '@/lib/sse'
 import { getHistory, cancelRequest } from '@/lib/api'
 import { useToastStore } from '@/stores/toast-store'
+import {
+  getOrCreateAbortController,
+  abortSession,
+} from '@/lib/abort-manager'
 
 export function ChatPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const abortRef = useRef<AbortController | null>(null)
 
-  const messages = useChatStore((s) => s.messages)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const connectionStatus = useChatStore((s) => s.connectionStatus)
+  // Use selectors for active session state
+  const messages = useChatStore(selectActiveSessionMessages)
+  const isStreaming = useChatStore(selectActiveSessionIsStreaming)
+  const connectionStatus = useChatStore(selectActiveSessionConnectionStatus)
+
   const sessionsQuery = useSessions()
   const allSessions = sessionsQuery.data?.pages.flatMap((p) => p.sessions) ?? []
   const session = sessionId ? allSessions.find((s) => s.session_id === sessionId) ?? null : null
@@ -30,47 +40,58 @@ export function ChatPage() {
   const createSession = useCreateSession()
   const updateSessionStatus = useUpdateSessionStatus()
 
-  // Load history on session switch
+  // Set active session and load history on session switch
   useEffect(() => {
     if (!sessionId) return
-    const loadHistory = async () => {
-      try {
-        useChatStore.getState().setConnectionStatus('connecting')
-        const history = await getHistory(sessionId)
-        useChatStore.getState().setMessages(
-          history.messages.map((m, i) => ({
-            id: `${i}`,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp,
-          }))
-        )
-        useChatStore.getState().setConnectionStatus('disconnected')
-      } catch {
-        useChatStore.getState().setConnectionStatus('error')
+
+    const store = useChatStore.getState()
+
+    // Update active session ID
+    store.setActiveSessionId(sessionId)
+
+    // Lazy load history if not already loaded
+    if (!store.hasLoadedHistory(sessionId)) {
+      const loadHistory = async () => {
+        try {
+          store.setSessionConnectionStatus(sessionId, 'connecting')
+          const history = await getHistory(sessionId)
+          store.setSessionMessages(
+            sessionId,
+            history.messages.map((m, i) => ({
+              id: `${i}`,
+              role: m.role,
+              content: m.content,
+              timestamp: m.timestamp,
+            }))
+          )
+          store.setSessionConnectionStatus(sessionId, 'disconnected')
+          store.markHistoryLoaded(sessionId)
+        } catch {
+          store.setSessionConnectionStatus(sessionId, 'error')
+        }
       }
+      loadHistory()
     }
-    useChatStore.getState().clearMessages()
-    loadHistory()
   }, [sessionId])
 
   const handleSseEvent = useCallback(
-    (event: SseEvent) => {
-      const chat = useChatStore.getState()
+    (event: SseEvent, currentSessionId: string) => {
+      const store = useChatStore.getState()
+
       switch (event.type) {
         case 'session_start':
-          chat.setConnectionStatus('connected')
-          chat.setActiveRequestId(event.request_id ?? null)
-          updateSessionStatus(sessionId!, 'busy')
+          store.setSessionConnectionStatus(currentSessionId, 'connected')
+          store.setSessionRequestId(currentSessionId, event.request_id ?? null)
+          updateSessionStatus(currentSessionId, 'busy')
           break
         case 'content':
-          chat.appendContent(event.text ?? '')
+          store.appendSessionContent(currentSessionId, event.text ?? '')
           break
         case 'reasoning':
-          chat.appendReasoning(event.text ?? '')
+          store.appendSessionReasoning(currentSessionId, event.text ?? '')
           break
         case 'tool_call':
-          chat.addToolCall({
+          store.addSessionToolCall(currentSessionId, {
             tool_call_id: event.tool_call_id ?? '',
             name: event.name ?? '',
             arguments: (event.arguments as Record<string, unknown>) ?? {},
@@ -78,7 +99,7 @@ export function ChatPage() {
           })
           break
         case 'tool_result':
-          chat.updateToolCallInMessage(event.tool_call_id ?? '', {
+          store.updateSessionToolCall(currentSessionId, event.tool_call_id ?? '', {
             status: event.success ? 'completed' : 'failed',
             result: event.result,
             success: event.success,
@@ -86,52 +107,57 @@ export function ChatPage() {
           })
           break
         case 'done':
-          chat.flushStreamBuffer()
-          chat.setConnectionStatus('disconnected')
-          chat.setIsStreaming(false)
-          chat.setActiveRequestId(null)
-          updateSessionStatus(sessionId!, 'idle')
+          store.flushSessionStreamBuffer(currentSessionId)
+          store.setSessionConnectionStatus(currentSessionId, 'disconnected')
+          store.stopStreaming(currentSessionId)
+          store.setSessionRequestId(currentSessionId, null)
+          updateSessionStatus(currentSessionId, 'idle')
           queryClient.invalidateQueries({ queryKey: ['sessions'] })
           break
         case 'error':
-          chat.flushStreamBuffer()
-          chat.setConnectionStatus('error')
-          chat.setIsStreaming(false)
-          chat.setActiveRequestId(null)
-          updateSessionStatus(sessionId!, 'error')
+          store.flushSessionStreamBuffer(currentSessionId)
+          store.setSessionConnectionStatus(currentSessionId, 'error')
+          store.stopStreaming(currentSessionId)
+          store.setSessionRequestId(currentSessionId, null)
+          updateSessionStatus(currentSessionId, 'error')
           break
         case 'cancelled':
-          chat.flushStreamBuffer()
-          chat.setConnectionStatus('disconnected')
-          chat.setIsStreaming(false)
-          chat.setActiveRequestId(null)
-          updateSessionStatus(sessionId!, 'idle')
+          store.flushSessionStreamBuffer(currentSessionId)
+          store.setSessionConnectionStatus(currentSessionId, 'disconnected')
+          store.stopStreaming(currentSessionId)
+          store.setSessionRequestId(currentSessionId, null)
+          updateSessionStatus(currentSessionId, 'idle')
           break
         case 'ping':
           break
       }
     },
-    [sessionId, updateSessionStatus, queryClient]
+    [updateSessionStatus, queryClient]
   )
 
   const handleSubmit = useCallback(
     async (content: string) => {
       if (!sessionId) return
 
-      chatStoreActions.appendMessage({
+      const store = useChatStore.getState()
+
+      // Append user message
+      store.appendSessionMessage(sessionId, {
         id: crypto.randomUUID(),
         role: 'user',
         content,
         timestamp: new Date().toISOString(),
       })
 
-      const abort = new AbortController()
-      abortRef.current = abort
+      // Get or create AbortController for this session
+      const abortController = getOrCreateAbortController(sessionId)
 
-      chatStoreActions.setIsStreaming(true)
-      chatStoreActions.initStreamBuffer()
+      // Start streaming
+      store.startStreaming(sessionId)
+      store.initSessionStreamBuffer(sessionId)
 
-      chatStoreActions.appendMessage({
+      // Append assistant message placeholder
+      store.appendSessionMessage(sessionId, {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: '',
@@ -140,22 +166,31 @@ export function ChatPage() {
       })
 
       try {
-        await connectSseStream(sessionId, content, handleSseEvent, abort.signal)
+        // Pass sessionId to event handler via closure
+        await connectSseStream(
+          sessionId,
+          content,
+          (event) => handleSseEvent(event, sessionId),
+          abortController.signal
+        )
       } catch {
-        if (abort.signal.aborted) return
+        if (abortController.signal.aborted) return
         useToastStore.getState().addToast('error', '发送消息失败，请重试')
-        chatStoreActions.setConnectionStatus('error')
-        chatStoreActions.setIsStreaming(false)
-        chatStoreActions.setActiveRequestId(null)
-        useChatStore.getState().updateLastMessage({ isError: true, isStreaming: false })
+        store.setSessionConnectionStatus(sessionId, 'error')
+        store.stopStreaming(sessionId)
+        store.setSessionRequestId(sessionId, null)
+        store.updateSessionLastMessage(sessionId, { isError: true, isStreaming: false })
       }
     },
     [sessionId, handleSseEvent]
   )
 
   const handleCancel = useCallback(async () => {
-    if (!sessionId || !abortRef.current) return
-    abortRef.current.abort()
+    if (!sessionId) return
+
+    // Abort the SSE connection for this session
+    abortSession(sessionId)
+
     try {
       await cancelRequest(sessionId)
     } catch {
@@ -215,14 +250,4 @@ export function ChatPage() {
       />
     </div>
   )
-}
-
-const chatStoreActions = {
-  appendMessage: (msg: Parameters<ReturnType<typeof useChatStore.getState>['appendMessage']>[0]) =>
-    useChatStore.getState().appendMessage(msg),
-  setIsStreaming: (v: boolean) => useChatStore.getState().setIsStreaming(v),
-  setConnectionStatus: (s: ReturnType<typeof useChatStore.getState>['connectionStatus']) =>
-    useChatStore.getState().setConnectionStatus(s),
-  setActiveRequestId: (id: string | null) => useChatStore.getState().setActiveRequestId(id),
-  initStreamBuffer: () => useChatStore.getState().initStreamBuffer(),
 }
