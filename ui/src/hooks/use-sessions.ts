@@ -55,6 +55,17 @@ export function useSessionById(sessionId: string | undefined) {
   return { session, ...query }
 }
 
+export function useUpdateSessionModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, data }: { sessionId: string; data: api.UpdateSessionModelRequest }) =>
+      api.updateSessionModel(sessionId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    },
+  })
+}
+
 export function useUpdateSessionStatus() {
   const queryClient = useQueryClient()
   return (id: string, status: string) => {

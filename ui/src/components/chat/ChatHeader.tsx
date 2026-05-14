@@ -23,7 +23,10 @@ export function ChatHeader({ session }: ChatHeaderProps) {
       {session && (
         <>
           <span className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-            {session.model}
+            {session.model_name}
+          </span>
+          <span className="text-xs text-[var(--color-text-placeholder)] truncate">
+            {session.provider_id}
           </span>
           <SessionStatusBadge status={session.status} />
         </>

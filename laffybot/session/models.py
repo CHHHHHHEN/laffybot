@@ -16,7 +16,8 @@ class SessionInfo:
     """Metadata for a persisted session."""
 
     session_id: str
-    model: str
+    provider_id: str
+    model_name: str
     status: SessionStatus
     created_at: datetime
     updated_at: datetime

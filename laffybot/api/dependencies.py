@@ -6,6 +6,7 @@ from fastapi import Request
 
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ApiConfig, ContextConfig
+from laffybot.session.app_setting_store import AppSettingStore, SQLiteAppSettingStore
 from laffybot.session.manager import SessionManager
 from laffybot.session.provider_store import ProviderStore, SQLiteProviderStore
 from laffybot.session.store import SessionStore, SQLiteStore
@@ -19,15 +20,21 @@ def build_provider_store(config: ApiConfig) -> ProviderStore:
     return SQLiteProviderStore(config.database_path)
 
 
+def build_app_setting_store(config: ApiConfig) -> AppSettingStore:
+    return SQLiteAppSettingStore(config.database_path)
+
+
 def build_session_manager(
     store: SessionStore,
     provider_store: ProviderStore,
+    app_setting_store: AppSettingStore,
     tool_registry: ToolRegistry,
     context_config: ContextConfig | None = None,
 ) -> SessionManager:
     return SessionManager(
         store=store,
         provider_store=provider_store,
+        app_setting_store=app_setting_store,
         tool_registry=tool_registry,
         context_config=context_config,
     )
@@ -43,6 +50,10 @@ def get_store(request: Request) -> SessionStore:
 
 def get_provider_store(request: Request) -> ProviderStore:
     return request.app.state.provider_store  # type: ignore[no-any-return]
+
+
+def get_app_setting_store(request: Request) -> AppSettingStore:
+    return request.app.state.app_setting_store  # type: ignore[no-any-return]
 
 
 def get_session_manager(request: Request) -> SessionManager:

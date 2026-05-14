@@ -15,8 +15,9 @@ from laffybot.agent.runner import AgentRunner, AgentRunSpec
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
 from laffybot.context import ContextBuilder, SimpleContextBuilder
-from laffybot.providers.errors import NoActiveProviderError
+from laffybot.providers.errors import ModelNotFoundError, ProviderNotFoundError
 from laffybot.providers.openai import OpenAIProvider
+from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionBusyError,
     SessionNotBusyError,
@@ -33,12 +34,14 @@ class SessionManager:
         self,
         store: SessionStore,
         provider_store: ProviderStore,
+        app_setting_store: AppSettingStore,
         tool_registry: ToolRegistry,
         context_config: ContextConfig | None = None,
         context_builder: ContextBuilder | None = None,
     ) -> None:
         self.store = store
         self.provider_store = provider_store
+        self.app_setting_store = app_setting_store
         self.tool_registry = tool_registry
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
@@ -64,19 +67,38 @@ class SessionManager:
         self,
         system_prompt: str | None = None,
         max_iterations: int = 10,
+        provider_id: str | None = None,
+        model_name: str | None = None,
     ) -> SessionInfo:
-        selection = await self.provider_store.get_active_selection()
-        if selection is None:
-            raise NoActiveProviderError()
+        if provider_id is not None and model_name is not None:
+            await self.provider_store.get_provider(provider_id)
+            models = await self.provider_store.list_models(provider_id)
+            if not any(m.name == model_name for m in models):
+                raise ModelNotFoundError(model_name)
+        elif provider_id is None and model_name is None:
+            config = await self.app_setting_store.get_default_session_config()
+            if config is None:
+                raise ValueError(
+                    "No default session model configured. "
+                    "Please configure a default model in settings."
+                )
+            provider_id = config.provider_id
+            model_name = config.model_name
+        else:
+            raise ValueError("provider_id and model_name must be provided together")
         session_id = str(uuid.uuid4())
         session = await self.store.create_session(
             session_id=session_id,
-            model=selection.model_name,
+            provider_id=provider_id,
+            model_name=model_name,
             system_prompt=system_prompt,
             max_iterations=max_iterations,
         )
         logger.info(
-            "Session created: session_id={}, model={}", session_id, selection.model_name
+            "Session created: session_id={}, provider_id={}, model_name={}",
+            session_id,
+            provider_id,
+            model_name,
         )
         return session
 
@@ -132,14 +154,6 @@ class SessionManager:
             if session.status == "busy":
                 raise SessionBusyError(session_id, session.current_request_id)
 
-            # Resolve active provider selection for this message send
-            selection = await self.provider_store.get_active_selection()
-            if selection is None:
-                raise NoActiveProviderError()
-            provider_config = await self.provider_store.get_provider_config(
-                selection.provider_id
-            )
-
             request_id = self._request_id()
             token = CancellationToken()
             self._active_tokens[session_id] = token
@@ -151,6 +165,13 @@ class SessionManager:
             log.info("Message send started: content_len={}", len(content))
 
             try:
+                provider_config = await self.provider_store.get_provider_config(
+                    session.provider_id
+                )
+                models = await self.provider_store.list_models(session.provider_id)
+                if not any(m.name == session.model_name for m in models):
+                    raise ModelNotFoundError(session.model_name)
+
                 await self.store.update_session_status(
                     session_id,
                     "busy",
@@ -161,14 +182,14 @@ class SessionManager:
                 await self.store.save_message(session_id, "user", content)
 
                 messages = await self._build_messages(
-                    session, content, selection.model_name
+                    session, content, session.model_name
                 )
                 provider = OpenAIProvider(provider_config)
                 runner = AgentRunner(provider)
                 spec = AgentRunSpec(
                     initial_messages=messages,
                     tools=self.tool_registry,
-                    model=selection.model_name,
+                    model=session.model_name,
                     max_iterations=session.max_iterations,
                 )
 
@@ -214,6 +235,18 @@ class SessionManager:
                             expected_status="busy",
                         )
                         break
+            except ProviderNotFoundError as exc:
+                log.error("Provider not found: {}", exc)
+                yield event_error(
+                    code="PROVIDER_NOT_FOUND",
+                    message=str(exc),
+                )
+            except ModelNotFoundError as exc:
+                log.error("Model not found: {}", exc)
+                yield event_error(
+                    code="MODEL_NOT_FOUND",
+                    message=str(exc),
+                )
             except CancelledError as exc:
                 log.warning("Message send cancelled: reason={}", exc.reason)
                 await self.store.update_session_status(
@@ -256,6 +289,23 @@ class SessionManager:
                 except Exception:
                     logger.exception("Failed to reset stuck busy session")
 
+    async def update_session_model(
+        self,
+        session_id: str,
+        provider_id: str,
+        model_name: str,
+    ) -> SessionInfo:
+        await self.provider_store.get_provider(provider_id)
+        models = await self.provider_store.list_models(provider_id)
+        if not any(m.name == model_name for m in models):
+            raise ModelNotFoundError(model_name)
+        return await self.store.update_session_model(
+            session_id,
+            provider_id,
+            model_name,
+            expected_status=("idle", "error"),
+        )
+
     async def _build_messages(
         self,
         session: SessionInfo,
@@ -268,7 +318,7 @@ class SessionManager:
             system_prompt=session.system_prompt,
             history=history,
             current_message=current_message,
-            model=model or session.model,
+            model=model or session.model_name,
             created_at=session.created_at,
         )
 

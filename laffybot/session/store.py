@@ -30,7 +30,8 @@ PRAGMA synchronous = NORMAL;
 
 CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT PRIMARY KEY,
-    model TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    model_name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'idle',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -60,10 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
 """
 
-_MIGRATION_SQL = """
--- Migration: Add token columns to messages table (idempotent)
--- SQLite doesn't support IF NOT EXISTS for columns, so we check first
-"""
+_MIGRATION_SQL = ""  # Migrations handled in _run_migrations
 
 
 class SessionStore(ABC):
@@ -73,9 +71,23 @@ class SessionStore(ABC):
     async def create_session(
         self,
         session_id: str,
-        model: str,
+        provider_id: str,
+        model_name: str,
         system_prompt: str | None,
         max_iterations: int,
+    ) -> SessionInfo:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update_session_model(
+        self,
+        session_id: str,
+        provider_id: str,
+        model_name: str,
+        expected_status: SessionStatus | tuple[SessionStatus, ...] | None = (
+            "idle",
+            "error",
+        ),
     ) -> SessionInfo:
         raise NotImplementedError
 
@@ -193,7 +205,8 @@ class SQLiteStore(SessionStore):
     def _row_to_session(row: aiosqlite.Row) -> SessionInfo:
         return SessionInfo(
             session_id=row["session_id"],
-            model=row["model"],
+            provider_id=row["provider_id"],
+            model_name=row["model_name"],
             status=validate_status(row["status"]),
             created_at=SQLiteStore._parse_dt(row["created_at"]),
             updated_at=SQLiteStore._parse_dt(row["updated_at"]),
@@ -224,7 +237,8 @@ class SQLiteStore(SessionStore):
     async def create_session(
         self,
         session_id: str,
-        model: str,
+        provider_id: str,
+        model_name: str,
         system_prompt: str | None,
         max_iterations: int,
     ) -> SessionInfo:
@@ -234,17 +248,26 @@ class SQLiteStore(SessionStore):
         await db.execute(
             """
             INSERT INTO sessions (
-                session_id, model, status, created_at, updated_at,
+                session_id, provider_id, model_name, status, created_at, updated_at,
                 message_count, current_request_id, error_message,
                 system_prompt, max_iterations
-            ) VALUES (?, ?, 'idle', ?, ?, 0, NULL, NULL, ?, ?)
+            ) VALUES (?, ?, ?, 'idle', ?, ?, 0, NULL, NULL, ?, ?)
             """,
-            (session_id, model, timestamp, timestamp, system_prompt, max_iterations),
+            (
+                session_id,
+                provider_id,
+                model_name,
+                timestamp,
+                timestamp,
+                system_prompt,
+                max_iterations,
+            ),
         )
         await db.commit()
         return SessionInfo(
             session_id=session_id,
-            model=model,
+            provider_id=provider_id,
+            model_name=model_name,
             status="idle",
             created_at=now,
             updated_at=now,
@@ -252,6 +275,39 @@ class SQLiteStore(SessionStore):
             system_prompt=system_prompt,
             max_iterations=max_iterations,
         )
+
+    async def update_session_model(
+        self,
+        session_id: str,
+        provider_id: str,
+        model_name: str,
+        expected_status: SessionStatus | tuple[SessionStatus, ...] | None = (
+            "idle",
+            "error",
+        ),
+    ) -> SessionInfo:
+        db = await self._ensure_db()
+        now = self._format_dt(self._now())
+        sql = """
+            UPDATE sessions
+            SET provider_id = ?, model_name = ?, updated_at = ?
+            WHERE session_id = ?
+        """
+        params: list[Any] = [provider_id, model_name, now, session_id]
+        if expected_status is not None:
+            if isinstance(expected_status, str):
+                sql += " AND status = ?"
+                params.append(expected_status)
+            else:
+                placeholders = ", ".join("?" for _ in expected_status)
+                sql += f" AND status IN ({placeholders})"
+                params.extend(expected_status)
+        cursor = await db.execute(sql, params)
+        await db.commit()
+        if cursor.rowcount and cursor.rowcount > 0:
+            return await self.get_session(session_id)
+        current = await self.get_session(session_id)
+        raise SessionStateError(session_id, current.status)
 
     async def get_session(self, session_id: str) -> SessionInfo:
         db = await self._ensure_db()

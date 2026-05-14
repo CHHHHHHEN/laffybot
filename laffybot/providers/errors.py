@@ -29,9 +29,9 @@ class NoActiveProviderError(ProviderError):
 
 
 class ModelNotFoundError(ProviderError):
-    def __init__(self, model_id: str) -> None:
-        self.model_id = model_id
-        super().__init__(f"Model '{model_id}' not found")
+    def __init__(self, model_name: str) -> None:
+        self.model_name = model_name
+        super().__init__(f"Model '{model_name}' not found")
 
 
 class ModelNameConflictError(ProviderError):

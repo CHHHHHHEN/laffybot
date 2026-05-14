@@ -39,22 +39,7 @@ CREATE TABLE IF NOT EXISTS provider_models (
     UNIQUE(provider_id, name)
 );
 
-CREATE TABLE IF NOT EXISTS app_settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
 """
-
-_ACTIVE_PROVIDER_KEY = "active_provider_id"
-_ACTIVE_MODEL_KEY = "active_model_id"
-
-
-@dataclass
-class ActiveSelection:
-    provider_id: str
-    model_id: str
-    provider_name: str
-    model_name: str
 
 
 @dataclass
@@ -105,8 +90,7 @@ class ProviderStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def delete_provider(self, provider_id: str) -> bool:
-        """Returns True if active selection was cleared."""
+    async def delete_provider(self, provider_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -123,18 +107,6 @@ class ProviderStore(ABC):
 
     @abstractmethod
     async def list_models(self, provider_id: str) -> list[ModelRow]:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def get_active_selection(self) -> ActiveSelection | None:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def set_active_selection(self, provider_id: str, model_id: str) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def clear_active_selection(self) -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -272,15 +244,8 @@ class SQLiteProviderStore(ProviderStore):
             raise ProviderNotFoundError(provider_id)
         return await self.get_provider(provider_id)
 
-    async def delete_provider(self, provider_id: str) -> bool:
+    async def delete_provider(self, provider_id: str) -> None:
         db = await self._ensure_db()
-        active_cleared = False
-
-        selection = await self.get_active_selection()
-        if selection and selection.provider_id == provider_id:
-            await self.clear_active_selection()
-            active_cleared = True
-
         cursor = await db.execute(
             "DELETE FROM providers WHERE provider_id = ?",
             (provider_id,),
@@ -288,7 +253,6 @@ class SQLiteProviderStore(ProviderStore):
         await db.commit()
         if cursor.rowcount == 0:
             raise ProviderNotFoundError(provider_id)
-        return active_cleared
 
     async def list_providers(self) -> list[ProviderRow]:
         db = await self._ensure_db()
@@ -321,10 +285,15 @@ class SQLiteProviderStore(ProviderStore):
 
     async def delete_model(self, model_id: str) -> None:
         db = await self._ensure_db()
-        # If this model is active, clear selection
-        selection = await self.get_active_selection()
-        if selection and selection.model_id == model_id:
-            await self.clear_active_selection()
+        # Look up model name before deleting (for error reporting)
+        async with db.execute(
+            "SELECT name FROM provider_models WHERE model_id = ?",
+            (model_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            raise ModelNotFoundError(f"id:{model_id}")
+        model_name: str = row["name"]
 
         cursor = await db.execute(
             "DELETE FROM provider_models WHERE model_id = ?",
@@ -332,7 +301,7 @@ class SQLiteProviderStore(ProviderStore):
         )
         await db.commit()
         if cursor.rowcount == 0:
-            raise ModelNotFoundError(model_id)
+            raise ModelNotFoundError(model_name)
 
     async def list_models(self, provider_id: str) -> list[ModelRow]:
         db = await self._ensure_db()
@@ -351,93 +320,6 @@ class SQLiteProviderStore(ProviderStore):
             )
             for row in rows
         ]
-
-    async def get_active_selection(self) -> ActiveSelection | None:
-        db = await self._ensure_db()
-        async with db.execute(
-            "SELECT value FROM app_settings WHERE key = ?",
-            (_ACTIVE_PROVIDER_KEY,),
-        ) as cursor:
-            provider_row = await cursor.fetchone()
-        async with db.execute(
-            "SELECT value FROM app_settings WHERE key = ?",
-            (_ACTIVE_MODEL_KEY,),
-        ) as cursor:
-            model_row = await cursor.fetchone()
-
-        if provider_row is None or model_row is None:
-            return None
-
-        provider_id = provider_row["value"]
-        model_id = model_row["value"]
-
-        if not model_id:
-            async with db.execute(
-                "SELECT name AS provider_name FROM providers WHERE provider_id = ?",
-                (provider_id,),
-            ) as cursor:
-                selection = await cursor.fetchone()
-            if selection is None:
-                return None
-            return ActiveSelection(
-                provider_id=provider_id,
-                model_id="",
-                provider_name=selection["provider_name"],
-                model_name="",
-            )
-
-        async with db.execute(
-            "SELECT p.name AS provider_name, pm.name AS model_name "
-            "FROM providers p "
-            "JOIN provider_models pm ON pm.provider_id = p.provider_id AND pm.model_id = ? "
-            "WHERE p.provider_id = ?",
-            (model_id, provider_id),
-        ) as cursor:
-            selection = await cursor.fetchone()
-
-        if selection is None:
-            return None
-
-        return ActiveSelection(
-            provider_id=provider_id,
-            model_id=model_id,
-            provider_name=selection["provider_name"],
-            model_name=selection["model_name"],
-        )
-
-    async def set_active_selection(self, provider_id: str, model_id: str) -> None:
-        db = await self._ensure_db()
-        await self.get_provider(provider_id)
-        if model_id:
-            async with db.execute(
-                "SELECT model_id FROM provider_models WHERE model_id = ? AND provider_id = ?",
-                (model_id, provider_id),
-            ) as cursor:
-                model_row = await cursor.fetchone()
-            if model_row is None:
-                raise ModelNotFoundError(model_id)
-
-        await db.execute(
-            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
-            (_ACTIVE_PROVIDER_KEY, provider_id),
-        )
-        await db.execute(
-            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
-            (_ACTIVE_MODEL_KEY, model_id),
-        )
-        await db.commit()
-        logger.info(
-            "Active selection set: provider_id={}, model_id={}", provider_id, model_id
-        )
-
-    async def clear_active_selection(self) -> None:
-        db = await self._ensure_db()
-        await db.execute(
-            "DELETE FROM app_settings WHERE key IN (?, ?)",
-            (_ACTIVE_PROVIDER_KEY, _ACTIVE_MODEL_KEY),
-        )
-        await db.commit()
-        logger.info("Active selection cleared")
 
     async def get_provider_config(self, provider_id: str) -> ProviderConfig:
         provider = await self.get_provider(provider_id)

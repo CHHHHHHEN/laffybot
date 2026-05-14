@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ErrorDetail(BaseModel):
@@ -21,6 +21,14 @@ class ErrorResponse(BaseModel):
 class SessionCreateRequest(BaseModel):
     system_prompt: str | None = None
     max_iterations: int = Field(default=10, ge=1)
+    provider_id: str | None = None
+    model_name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_provider_model(self) -> "SessionCreateRequest":
+        if (self.provider_id is None) != (self.model_name is None):
+            raise ValueError("provider_id and model_name must be provided together")
+        return self
 
 
 class MessageCreateRequest(BaseModel):
@@ -33,7 +41,8 @@ class SessionCancelRequest(BaseModel):
 
 class SessionBase(BaseModel):
     session_id: str
-    model: str
+    provider_id: str
+    model_name: str
     status: str
     created_at: datetime
 
@@ -130,16 +139,9 @@ class ModelResponse(BaseModel):
     name: str
 
 
-class ActiveSelectionResponse(BaseModel):
+class SessionModelUpdateRequest(BaseModel):
     provider_id: str
-    model_id: str
-    provider_name: str
     model_name: str
-
-
-class ActiveSelectionUpdateRequest(BaseModel):
-    provider_id: str
-    model_id: str
 
 
 class TestResultResponse(BaseModel):

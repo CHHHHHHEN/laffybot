@@ -23,6 +23,7 @@ from laffybot.agent.tools.filesystem import (
 )
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
+    build_app_setting_store,
     build_provider_store,
     build_session_manager,
     build_store,
@@ -46,6 +47,7 @@ def create_app(
     config = api_config or ApiConfig()
     store_obj = store or build_store(config)
     provider_store_obj = provider_store or build_provider_store(config)
+    app_setting_store_obj = build_app_setting_store(config)
     tool_registry_obj = tool_registry or ToolRegistry()
     tool_registry_obj.register(ReadFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(WriteFileTool(workspace=Path.cwd()))
@@ -54,6 +56,7 @@ def create_app(
     session_manager_obj = build_session_manager(
         store=store_obj,
         provider_store=provider_store_obj,
+        app_setting_store=app_setting_store_obj,
         tool_registry=tool_registry_obj,
         context_config=context_config,
     )
@@ -63,7 +66,7 @@ def create_app(
         logger.info("Application started: version={}", __version__)
         yield
         logger.info("Application shutting down")
-        for obj in (provider_store_obj, store_obj):
+        for obj in (provider_store_obj, store_obj, app_setting_store_obj):
             try:
                 await asyncio.wait_for(obj.close(), timeout=5)
             except TimeoutError:
@@ -85,6 +88,7 @@ def create_app(
     app.state.api_config = config
     app.state.store = store_obj
     app.state.provider_store = provider_store_obj
+    app.state.app_setting_store = app_setting_store_obj
     app.state.tool_registry = tool_registry_obj
     app.state.session_manager = session_manager_obj
 

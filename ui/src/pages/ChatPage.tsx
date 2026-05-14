@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MessageSquarePlus } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ChatHeader } from '@/components/chat/ChatHeader'
 import { MessageList } from '@/components/chat/MessageList'
 import { InputBar } from '@/components/chat/InputBar'
-import { NewSessionDialog } from '@/components/ui/NewSessionDialog'
 import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner'
 import { Button } from '@/components/ui/Button'
 import { useChatStore } from '@/stores/chat-store'
@@ -19,8 +18,6 @@ export function ChatPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [showNewDialog, setShowNewDialog] = useState(false)
-  const [dialogError, setDialogError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const messages = useChatStore((s) => s.messages)
@@ -166,24 +163,16 @@ export function ChatPage() {
     }
   }, [sessionId])
 
-  const handleCreateSession = useCallback(
-    async (systemPrompt: string, maxIterations: number) => {
-      setDialogError(null)
-      try {
-        const newSession = await createSession.mutateAsync({
-          system_prompt: systemPrompt || undefined,
-          max_iterations: maxIterations,
-        })
-        if (newSession) {
-          setShowNewDialog(false)
-          navigate(`/chat/${newSession.session_id}`)
-        }
-      } catch (err) {
-        setDialogError(err instanceof Error ? err.message : '创建会话失败')
+  const handleCreateSession = useCallback(async () => {
+    try {
+      const newSession = await createSession.mutateAsync({})
+      if (newSession) {
+        navigate(`/chat/${newSession.session_id}`)
       }
-    },
-    [createSession, navigate]
-  )
+    } catch (err) {
+      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '创建会话失败')
+    }
+  }, [createSession, navigate])
 
   if (!sessionId) {
     return (
@@ -196,22 +185,13 @@ export function ChatPage() {
             选择或创建一个会话开始对话
           </p>
           <Button
-            onClick={() => setShowNewDialog(true)}
+            onClick={handleCreateSession}
             aria-label="新建会话"
           >
             <MessageSquarePlus size={18} />
             新建会话
           </Button>
         </div>
-
-        {showNewDialog && (
-          <NewSessionDialog
-            isOpen={true}
-            onSubmit={handleCreateSession}
-            onCancel={() => setShowNewDialog(false)}
-            error={dialogError}
-          />
-        )}
       </div>
     )
   }
@@ -227,18 +207,12 @@ export function ChatPage() {
       <InputBar
         isStreaming={isStreaming}
         disabled={!session || session.status === 'busy'}
+        sessionId={sessionId}
+        providerId={session?.provider_id}
+        modelName={session?.model_name}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
       />
-
-      {showNewDialog && (
-        <NewSessionDialog
-          isOpen={true}
-          onSubmit={handleCreateSession}
-          onCancel={() => setShowNewDialog(false)}
-          error={dialogError}
-        />
-      )}
     </div>
   )
 }

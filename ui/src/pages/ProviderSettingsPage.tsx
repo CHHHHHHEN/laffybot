@@ -45,12 +45,8 @@ export function ProviderSettingsPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const result = await deleteProvider.mutateAsync(id)
-      const activeCleared = (result as { active_cleared?: boolean })?.active_cleared ?? false
+      await deleteProvider.mutateAsync(id)
       useToastStore.getState().addToast('success', '提供商已删除')
-      if (activeCleared) {
-        useToastStore.getState().addToast('info', '当前选中的提供商已被删除，请重新选择')
-      }
     } catch {
       useToastStore.getState().addToast('error', '删除提供商失败')
     }

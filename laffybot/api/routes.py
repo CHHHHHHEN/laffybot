@@ -17,14 +17,13 @@ from laffybot.agent.events import SSEEvent, event_error, event_ping
 from laffybot.agent.heartbeat import HeartbeatManager
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
+    get_app_setting_store,
     get_provider_store,
     get_session_manager,
     get_store,
     get_tool_registry,
 )
 from laffybot.api.schemas import (
-    ActiveSelectionResponse,
-    ActiveSelectionUpdateRequest,
     HealthResponse,
     HistoryResponse,
     MessageCreateRequest,
@@ -41,13 +40,16 @@ from laffybot.api.schemas import (
     SessionDeleteResponse,
     SessionDetailResponse,
     SessionListResponse,
+    SessionModelUpdateRequest,
     SessionResponse,
     TestResultResponse,
 )
 from laffybot.providers.errors import (
-    NoActiveProviderError,
+    ModelNotFoundError,
     ProviderConnectionError,
+    ProviderNotFoundError,
 )
+from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionBusyError,
     SessionError,
@@ -65,7 +67,8 @@ router = APIRouter(prefix="/api/v1")
 def _serialize_session(session: SessionInfo) -> dict[str, object]:
     return {
         "session_id": session.session_id,
-        "model": session.model,
+        "provider_id": session.provider_id,
+        "model_name": session.model_name,
         "status": session.status,
         "created_at": session.created_at,
     }
@@ -134,6 +137,28 @@ async def _stream_session_events(
         )
         yield "event: done\ndata: {}\n\n"
         return
+    except ProviderNotFoundError as exc:
+        logger.error(
+            "SSE stream error: provider_id for session={}, error={}", session_id, exc
+        )
+        event_index += 1
+        yield _sse_frame(
+            event_error(code="PROVIDER_NOT_FOUND", message=str(exc)),
+            f"evt_{event_index}",
+        )
+        yield "event: done\ndata: {}\n\n"
+        return
+    except ModelNotFoundError as exc:
+        logger.error(
+            "SSE stream error: model for session={}, error={}", session_id, exc
+        )
+        event_index += 1
+        yield _sse_frame(
+            event_error(code="MODEL_NOT_FOUND", message=str(exc)),
+            f"evt_{event_index}",
+        )
+        yield "event: done\ndata: {}\n\n"
+        return
     except SessionError as exc:
         logger.error("SSE stream error: session_id={}, error={}", session_id, exc)
         event_index += 1
@@ -162,10 +187,17 @@ async def create_session(
     payload: SessionCreateRequest,
     manager: SessionManager = Depends(get_session_manager),
 ) -> dict[str, object]:
-    session = await manager.create_session(
-        system_prompt=payload.system_prompt,
-        max_iterations=payload.max_iterations,
-    )
+    try:
+        session = await manager.create_session(
+            system_prompt=payload.system_prompt,
+            max_iterations=payload.max_iterations,
+            provider_id=payload.provider_id,
+            model_name=payload.model_name,
+        )
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc))
     return _serialize_session(session)
 
 
@@ -259,6 +291,87 @@ async def delete_session(
     return {"status": "deleted", "session_id": session_id}
 
 
+@router.put("/sessions/{session_id}/model", response_model=SessionResponse)
+async def update_session_model(
+    session_id: str,
+    payload: SessionModelUpdateRequest,
+    manager: SessionManager = Depends(get_session_manager),
+) -> dict[str, object]:
+    session = await manager.update_session_model(
+        session_id, payload.provider_id, payload.model_name
+    )
+    return _serialize_session(session)
+
+
+# ─── Settings Routes ───────────────────────────────────────────────────────────
+
+
+@router.get("/settings/default-session-model")
+async def get_default_session_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str] | None:
+    config = await app_setting_store.get_default_session_config()
+    if config is None:
+        return None
+    return {"provider_id": config.provider_id, "model_name": config.model_name}
+
+
+@router.put("/settings/default-session-model")
+async def set_default_session_model(
+    payload: SessionModelUpdateRequest,
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+    provider_store: ProviderStore = Depends(get_provider_store),
+) -> dict[str, str]:
+    await provider_store.get_provider(payload.provider_id)
+    models = await provider_store.list_models(payload.provider_id)
+    if not any(m.name == payload.model_name for m in models):
+        raise ModelNotFoundError(payload.model_name)
+    await app_setting_store.set_default_session_config(
+        payload.provider_id, payload.model_name
+    )
+    return {"provider_id": payload.provider_id, "model_name": payload.model_name}
+
+
+@router.delete("/settings/default-session-model")
+async def delete_default_session_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str]:
+    await app_setting_store.delete_default_session_config()
+    return {"status": "cleared"}
+
+
+@router.get("/settings/summary-model")
+async def get_summary_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str] | None:
+    config = await app_setting_store.get_summary_model()
+    if config is None:
+        return None
+    return {"provider_id": config.provider_id, "model_name": config.model_name}
+
+
+@router.put("/settings/summary-model")
+async def set_summary_model(
+    payload: SessionModelUpdateRequest,
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+    provider_store: ProviderStore = Depends(get_provider_store),
+) -> dict[str, str]:
+    await provider_store.get_provider(payload.provider_id)
+    models = await provider_store.list_models(payload.provider_id)
+    if not any(m.name == payload.model_name for m in models):
+        raise ModelNotFoundError(payload.model_name)
+    await app_setting_store.set_summary_model(payload.provider_id, payload.model_name)
+    return {"provider_id": payload.provider_id, "model_name": payload.model_name}
+
+
+@router.delete("/settings/summary-model")
+async def delete_summary_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str]:
+    await app_setting_store.delete_summary_model()
+    return {"status": "cleared"}
+
+
 # ─── Health Routes ─────────────────────────────────────────────────────────────
 
 
@@ -309,38 +422,6 @@ async def create_provider(
     return _serialize_provider(provider)
 
 
-@router.get("/providers/active", response_model=ActiveSelectionResponse | None)
-async def get_active_selection(
-    provider_store: ProviderStore = Depends(get_provider_store),
-) -> dict[str, object] | None:
-    selection = await provider_store.get_active_selection()
-    if selection is None:
-        return None
-    return {
-        "provider_id": selection.provider_id,
-        "model_id": selection.model_id,
-        "provider_name": selection.provider_name,
-        "model_name": selection.model_name,
-    }
-
-
-@router.put("/providers/active", response_model=ActiveSelectionResponse)
-async def set_active_selection(
-    payload: ActiveSelectionUpdateRequest,
-    provider_store: ProviderStore = Depends(get_provider_store),
-) -> dict[str, object]:
-    await provider_store.set_active_selection(payload.provider_id, payload.model_id)
-    selection = await provider_store.get_active_selection()
-    if selection is None:
-        raise NoActiveProviderError()
-    return {
-        "provider_id": selection.provider_id,
-        "model_id": selection.model_id,
-        "provider_name": selection.provider_name,
-        "model_name": selection.model_name,
-    }
-
-
 @router.get("/providers/{provider_id}", response_model=ProviderDetailResponse)
 async def get_provider(
     provider_id: str,
@@ -371,11 +452,8 @@ async def delete_provider(
     provider_id: str,
     provider_store: ProviderStore = Depends(get_provider_store),
 ) -> dict[str, object]:
-    active_cleared = await provider_store.delete_provider(provider_id)
-    result: dict[str, object] = {"status": "deleted", "provider_id": provider_id}
-    if active_cleared:
-        result["active_cleared"] = True
-    return result
+    await provider_store.delete_provider(provider_id)
+    return {"status": "deleted", "provider_id": provider_id}
 
 
 @router.get("/providers/{provider_id}/models", response_model=list[ModelResponse])

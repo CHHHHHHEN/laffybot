@@ -18,14 +18,6 @@ export function useModels(providerId: string | undefined) {
   })
 }
 
-export function useActiveSelection() {
-  return useQuery({
-    queryKey: ['active-selection'],
-    queryFn: () => api.getActiveSelection(),
-    staleTime: 30_000,
-  })
-}
-
 export function useCreateProvider() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -53,7 +45,6 @@ export function useDeleteProvider() {
     mutationFn: (id: string) => api.deleteProvider(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['providers'] })
-      queryClient.invalidateQueries({ queryKey: ['active-selection'] })
     },
   })
 }
@@ -80,13 +71,4 @@ export function useDeleteModel() {
   })
 }
 
-export function useSetActiveSelection() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ providerId, modelId }: { providerId: string; modelId: string }) =>
-      api.setActiveSelection({ provider_id: providerId, model_id: modelId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['active-selection'] })
-    },
-  })
-}
+

@@ -38,11 +38,14 @@ export class ApiError extends Error {
 export interface CreateSessionRequest {
   system_prompt?: string
   max_iterations?: number
+  provider_id?: string
+  model_name?: string
 }
 
 export interface SessionResponse {
   session_id: string
-  model: string
+  provider_id: string
+  model_name: string
   status: 'idle' | 'busy' | 'error'
   created_at: string
   message_count?: number
@@ -211,16 +214,9 @@ export interface ModelResponse {
   name: string
 }
 
-export interface ActiveSelectionResponse {
+export interface UpdateSessionModelRequest {
   provider_id: string
-  model_id: string
-  provider_name: string
   model_name: string
-}
-
-export interface ActiveSelectionUpdateRequest {
-  provider_id: string
-  model_id: string
 }
 
 export interface TestResultResponse {
@@ -252,7 +248,7 @@ export function updateProvider(id: string, data: ProviderUpdateRequest) {
 }
 
 export function deleteProvider(id: string) {
-  return apiRequest<{ status: string; provider_id: string; active_cleared?: boolean }>(
+  return apiRequest<{ status: string; provider_id: string }>(
     `/api/v1/providers/${id}`,
     { method: 'DELETE' }
   )
@@ -275,12 +271,8 @@ export function deleteModel(providerId: string, modelId: string) {
   })
 }
 
-export function getActiveSelection() {
-  return apiRequest<ActiveSelectionResponse | null>('/api/v1/providers/active')
-}
-
-export function setActiveSelection(data: ActiveSelectionUpdateRequest) {
-  return apiRequest<ActiveSelectionResponse>('/api/v1/providers/active', {
+export function updateSessionModel(sessionId: string, data: UpdateSessionModelRequest) {
+  return apiRequest<SessionResponse>(`/api/v1/sessions/${sessionId}/model`, {
     method: 'PUT',
     body: JSON.stringify(data),
   })

@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUiStore } from '@/stores/ui-store'
 import { NavLinks } from './NavLinks'
-import { GlobalModelSelector } from './GlobalModelSelector'
 import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2 } from 'lucide-react'
-import { NewSessionDialog } from '@/components/ui/NewSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
 import { useSessions, useCreateSession, useDeleteSession } from '@/hooks/use-sessions'
@@ -20,23 +18,16 @@ export function Sidebar() {
   const allSessions = sessionsQuery.data?.pages.flatMap((p) => p.sessions) ?? []
   const isLoading = sessionsQuery.isLoading
 
-  const [showNewDialog, setShowNewDialog] = useState(false)
-  const [dialogError, setDialogError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
-  const handleCreateSession = async (systemPrompt: string, maxIterations: number) => {
-    setDialogError(null)
+  const handleCreateSession = async () => {
     try {
-      const session = await createSession.mutateAsync({
-        system_prompt: systemPrompt || undefined,
-        max_iterations: maxIterations,
-      })
+      const session = await createSession.mutateAsync({})
       if (session) {
-        setShowNewDialog(false)
         navigate(`/chat/${session.session_id}`)
       }
     } catch (err) {
-      setDialogError(err instanceof Error ? err.message : '创建会话失败')
+      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '创建会话失败')
     }
   }
 
@@ -89,14 +80,11 @@ export function Sidebar() {
           {/* Nav links */}
           <NavLinks />
 
-          {/* Global model selector */}
-          {sidebarOpen && <GlobalModelSelector />}
-
           {/* New chat button */}
           <div className="px-3 mb-2">
             <Button
               variant="ghost"
-              onClick={() => setShowNewDialog(true)}
+              onClick={handleCreateSession}
               className="w-full justify-start"
               aria-label="新建会话"
             >
@@ -125,7 +113,7 @@ export function Sidebar() {
                     onClick={() => navigate(`/chat/${session.session_id}`)}
                     className="group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]"
                   >
-                    <div className="flex-1 truncate">{session.model || session.session_id.slice(0, 8)}</div>
+                    <div className="flex-1 truncate">{session.model_name || session.session_id.slice(0, 8)}</div>
                     <Button
                       variant="icon"
                       onClick={(e) => {
@@ -147,15 +135,6 @@ export function Sidebar() {
           </div>
         </div>
       </aside>
-
-      {showNewDialog && (
-        <NewSessionDialog
-          isOpen={true}
-          onSubmit={handleCreateSession}
-          onCancel={() => { setShowNewDialog(false); setDialogError(null) }}
-          error={dialogError}
-        />
-      )}
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
