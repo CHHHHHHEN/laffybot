@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Pencil, Trash2, Globe, Loader2, Plug } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import * as api from '@/lib/api'
-import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider } from '@/hooks/use-providers'
+import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider, useDefaultSessionModel, useSetDefaultSessionModel } from '@/hooks/use-providers'
 import { ProviderForm } from '@/components/settings/ProviderForm'
 import { ModelList } from '@/components/settings/ModelList'
 import { Button } from '@/components/ui/Button'
@@ -13,6 +13,8 @@ export function ProviderSettingsPage() {
   const createProvider = useCreateProvider()
   const updateProvider = useUpdateProvider()
   const deleteProvider = useDeleteProvider()
+  const { data: defaultModel } = useDefaultSessionModel()
+  const setDefaultSessionModel = useSetDefaultSessionModel()
 
   const modelQueries = useQueries({
     queries: providers.map((p) => ({
@@ -69,6 +71,19 @@ export function ProviderSettingsPage() {
   }
 
   const editingProvider = editingId ? providers.find((p) => p.id === editingId) : undefined
+
+  const isDefaultModel = (providerId: string, modelName: string) => {
+    return defaultModel?.provider_id === providerId && defaultModel?.model_name === modelName
+  }
+
+  const handleSetDefault = async (providerId: string, modelName: string) => {
+    try {
+      await setDefaultSessionModel.mutateAsync({ provider_id: providerId, model_name: modelName })
+      useToastStore.getState().addToast('success', '已设为默认模型')
+    } catch {
+      useToastStore.getState().addToast('error', '设置默认模型失败')
+    }
+  }
 
   return (
     <div className="p-6 max-w-[720px]">
@@ -152,6 +167,8 @@ export function ProviderSettingsPage() {
               <ModelList
                 providerId={provider.id}
                 models={modelsMap[provider.id] || []}
+                isDefaultModel={isDefaultModel}
+                onSetDefault={(modelName) => handleSetDefault(provider.id, modelName)}
               />
             </div>
           ))}

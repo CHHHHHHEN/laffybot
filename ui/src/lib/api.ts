@@ -284,6 +284,28 @@ export function testProvider(id: string) {
   })
 }
 
+export interface DefaultSessionModelResponse {
+  provider_id: string
+  model_name: string
+}
+
+export function getDefaultSessionModel() {
+  return apiRequest<DefaultSessionModelResponse | null>('/api/v1/settings/default-session-model')
+}
+
+export function setDefaultSessionModel(data: { provider_id: string; model_name: string }) {
+  return apiRequest<void>('/api/v1/settings/default-session-model', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function clearDefaultSessionModel() {
+  return apiRequest<void>('/api/v1/settings/default-session-model', {
+    method: 'DELETE',
+  })
+}
+
 /* ---- Health API ---- */
 
 export function checkHealth() {

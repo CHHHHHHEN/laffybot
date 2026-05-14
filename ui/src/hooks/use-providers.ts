@@ -71,4 +71,32 @@ export function useDeleteModel() {
   })
 }
 
+export function useDefaultSessionModel() {
+  return useQuery({
+    queryKey: ['defaultSessionModel'],
+    queryFn: () => api.getDefaultSessionModel(),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetDefaultSessionModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { provider_id: string; model_name: string }) =>
+      api.setDefaultSessionModel(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defaultSessionModel'] })
+    },
+  })
+}
+
+export function useClearDefaultSessionModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.clearDefaultSessionModel(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defaultSessionModel'] })
+    },
+  })
+}
 
