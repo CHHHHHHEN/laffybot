@@ -67,7 +67,7 @@
 | `reasoning` | `appendToStreamBuffer('reasoning', text)` | 同上 |
 | `tool_call` | `addToolCallToBuffer(toolCall)` | 流期间工具调用暂存 buffer，结束时一并渲染 |
 | `tool_result` | `updateToolCallInBuffer(tool_call_id, updates)` | 更新 buffer 中的工具调用状态 |
-| `done` | `flushStreamBuffer()` → 更新最后一条 streaming assistant 消息为正式消息（原地替换，而非追加新消息），重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle | 移除流式光标，渲染完整回复 |
+| `done` | `flushStreamBuffer()` → 更新最后一条 streaming assistant 消息为正式消息（原地替换，而非追加新消息），重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle，延迟轮询标题更新（1s/3s） | 移除流式光标，渲染完整回复，会话列表标题延迟更新 |
 | `error` | `flushStreamBuffer()`（更新最后一条 streaming 消息，标记 isError=true），`setConnectionStatus('error')`，标记会话为 error | 消息气泡显示"发送失败" |
 | `cancelled` | `flushStreamBuffer()`，重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle | 消息标记为中断 |
 | `ping` | 忽略（无操作） | 无 |
