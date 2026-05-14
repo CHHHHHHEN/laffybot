@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     current_request_id TEXT,
     error_message TEXT,
     system_prompt TEXT,
-    max_iterations INTEGER NOT NULL DEFAULT 10
+    max_iterations INTEGER NOT NULL DEFAULT 10,
+    title TEXT,
+    user_message_count INTEGER NOT NULL DEFAULT 0,
+    title_updated_at_user_message_count INTEGER NOT NULL DEFAULT 0,
+    title_auto_generated INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
@@ -145,6 +149,16 @@ class SessionStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def update_session_title(
+        self,
+        session_id: str,
+        title: str,
+        expected_user_message_count: int,
+        expected_title_auto_generated: bool,
+    ) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
     async def close(self) -> None:
         raise NotImplementedError
 
@@ -215,6 +229,12 @@ class SQLiteStore(SessionStore):
             error_message=row["error_message"],
             system_prompt=row["system_prompt"],
             max_iterations=row["max_iterations"],
+            title=row["title"],
+            user_message_count=row["user_message_count"],
+            title_updated_at_user_message_count=row[
+                "title_updated_at_user_message_count"
+            ],
+            title_auto_generated=bool(row["title_auto_generated"]),
         )
 
     @staticmethod
@@ -419,14 +439,27 @@ class SQLiteStore(SessionStore):
                     output_tokens,
                 ),
             )
-            await db.execute(
-                """
-                UPDATE sessions
-                SET message_count = message_count + 1, updated_at = ?
-                WHERE session_id = ?
-                """,
-                (timestamp, session_id),
-            )
+            # Increment user_message_count if role is "user"
+            if role == "user":
+                await db.execute(
+                    """
+                    UPDATE sessions
+                    SET message_count = message_count + 1,
+                        user_message_count = user_message_count + 1,
+                        updated_at = ?
+                    WHERE session_id = ?
+                    """,
+                    (timestamp, session_id),
+                )
+            else:
+                await db.execute(
+                    """
+                    UPDATE sessions
+                    SET message_count = message_count + 1, updated_at = ?
+                    WHERE session_id = ?
+                    """,
+                    (timestamp, session_id),
+                )
             await db.commit()
         except aiosqlite.IntegrityError as exc:
             await db.rollback()
@@ -473,6 +506,42 @@ class SQLiteStore(SessionStore):
     async def get_message_count(self, session_id: str) -> int:
         session = await self.get_session(session_id)
         return session.message_count
+
+    async def update_session_title(
+        self,
+        session_id: str,
+        title: str,
+        expected_user_message_count: int,
+        expected_title_auto_generated: bool,
+    ) -> bool:
+        """Update session title with optimistic locking.
+
+        Returns True if update succeeded, False if optimistic lock failed.
+        """
+        db = await self._ensure_db()
+        now = self._format_dt(self._now())
+        cursor = await db.execute(
+            """
+            UPDATE sessions
+            SET title = ?,
+                title_auto_generated = 1,
+                title_updated_at_user_message_count = ?,
+                updated_at = ?
+            WHERE session_id = ?
+              AND user_message_count = ?
+              AND title_auto_generated = ?
+            """,
+            (
+                title,
+                expected_user_message_count,
+                now,
+                session_id,
+                expected_user_message_count,
+                1 if expected_title_auto_generated else 0,
+            ),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
     async def close(self) -> None:
         if self._db is not None:

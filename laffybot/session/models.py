@@ -26,6 +26,10 @@ class SessionInfo:
     error_message: str | None = None
     system_prompt: str | None = None
     max_iterations: int = 10
+    title: str | None = None
+    user_message_count: int = 0
+    title_updated_at_user_message_count: int = 0
+    title_auto_generated: bool = False
 
 
 def validate_status(status: str) -> SessionStatus:

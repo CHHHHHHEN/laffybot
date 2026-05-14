@@ -113,7 +113,13 @@ export function Sidebar() {
                     onClick={() => navigate(`/chat/${session.session_id}`)}
                     className="group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]"
                   >
-                    <div className="flex-1 truncate">{session.model_name || session.session_id.slice(0, 8)}</div>
+                    <div className="flex-1 truncate">
+                      {session.title ?? (
+                        <span className="text-[var(--color-text-placeholder)]">
+                          New Chat · {session.model_name}
+                        </span>
+                      )}
+                    </div>
                     <Button
                       variant="icon"
                       onClick={(e) => {

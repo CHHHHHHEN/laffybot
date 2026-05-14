@@ -42,6 +42,7 @@ from laffybot.api.schemas import (
     SessionListResponse,
     SessionModelUpdateRequest,
     SessionResponse,
+    SessionTitleUpdateRequest,
     TestResultResponse,
 )
 from laffybot.providers.errors import (
@@ -71,6 +72,7 @@ def _serialize_session(session: SessionInfo) -> dict[str, object]:
         "model_name": session.model_name,
         "status": session.status,
         "created_at": session.created_at,
+        "title": session.title,
     }
 
 
@@ -78,6 +80,7 @@ def _serialize_session_detail(session: SessionInfo) -> dict[str, object]:
     payload = _serialize_session(session)
     payload["message_count"] = session.message_count
     payload["current_request_id"] = session.current_request_id
+    payload["title_auto_generated"] = session.title_auto_generated
     return payload
 
 
@@ -301,6 +304,43 @@ async def update_session_model(
         session_id, payload.provider_id, payload.model_name
     )
     return _serialize_session(session)
+
+
+@router.patch("/sessions/{session_id}/title", response_model=SessionDetailResponse)
+async def update_session_title(
+    session_id: str,
+    payload: SessionTitleUpdateRequest,
+    store: SessionStore = Depends(get_store),
+) -> dict[str, object]:
+    """Update session title manually.
+
+    Sets title_auto_generated to False to prevent auto-generation from overwriting.
+    """
+    session = await store.get_session(session_id)
+
+    # Update title with optimistic locking
+    # We use current user_message_count to avoid triggering unnecessary regeneration
+    success = await store.update_session_title(
+        session_id,
+        payload.title,
+        session.user_message_count,
+        session.title_auto_generated,
+    )
+
+    if not success:
+        # Optimistic lock failed - get fresh session and try again
+        # This shouldn't normally happen for manual edits
+        session = await store.get_session(session_id)
+        success = await store.update_session_title(
+            session_id,
+            payload.title,
+            session.user_message_count,
+            session.title_auto_generated,
+        )
+
+    # Return updated session
+    updated_session = await store.get_session(session_id)
+    return _serialize_session_detail(updated_session)
 
 
 # ─── Settings Routes ───────────────────────────────────────────────────────────

@@ -45,6 +45,7 @@ class SessionBase(BaseModel):
     model_name: str
     status: str
     created_at: datetime
+    title: str | None = None
 
 
 class SessionResponse(SessionBase):
@@ -54,10 +55,15 @@ class SessionResponse(SessionBase):
 class SessionDetailResponse(SessionBase):
     message_count: int
     current_request_id: str | None = None
+    title_auto_generated: bool = False
 
 
 class SessionListItem(SessionBase):
     message_count: int
+
+
+class SessionTitleUpdateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
 
 
 class SessionListResponse(BaseModel):

@@ -49,6 +49,7 @@ export interface SessionResponse {
   status: 'idle' | 'busy' | 'error'
   created_at: string
   message_count?: number
+  title?: string | null
 }
 
 export interface ListSessionsResponse {
@@ -81,6 +82,17 @@ export function listSessions(params?: { limit?: number; offset?: number; status?
 export function deleteSession(sessionId: string) {
   return apiRequest<{ status: string; session_id: string }>(`/api/v1/sessions/${sessionId}`, {
     method: 'DELETE',
+  })
+}
+
+export interface UpdateSessionTitleRequest {
+  title: string
+}
+
+export function updateSessionTitle(sessionId: string, title: string) {
+  return apiRequest<SessionResponse>(`/api/v1/sessions/${sessionId}/title`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
   })
 }
 

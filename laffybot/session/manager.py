@@ -12,6 +12,7 @@ from loguru import logger
 from laffybot.agent.cancellation import CancellationToken, CancelledError
 from laffybot.agent.events import SSEEvent, event_error
 from laffybot.agent.runner import AgentRunner, AgentRunSpec
+from laffybot.agent.title_generator import TitleGenerator
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
 from laffybot.context import ContextBuilder, SimpleContextBuilder
@@ -234,6 +235,9 @@ class SessionManager:
                             error_message=error_message,
                             expected_status="busy",
                         )
+                        # Trigger auto-title generation asynchronously
+                        if response_status == "idle" and assistant_chunks:
+                            asyncio.create_task(self._trigger_auto_title(session_id))
                         break
             except ProviderNotFoundError as exc:
                 log.error("Provider not found: {}", exc)
@@ -328,3 +332,111 @@ class SessionManager:
             return None
         message = error.get("message")
         return message if isinstance(message, str) else None
+
+    async def _trigger_auto_title(self, session_id: str) -> None:
+        """Trigger automatic title generation for a session.
+
+        This method runs asynchronously after message completion.
+        It implements:
+        - First-time title generation when title is None
+        - Re-generation when user_message_count increments by >= 5
+        - Optimistic locking to prevent race conditions
+        """
+        try:
+            session = await self.store.get_session(session_id)
+
+            # Determine if we should generate or regenerate
+            should_generate = False
+            is_first_time = session.title is None
+
+            if is_first_time:
+                # First-time generation
+                # Check if we have assistant content (not just tool calls)
+                messages = await self.store.get_messages(session_id)
+                user_msgs = [m for m in messages if m["role"] == "user"]
+                assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+
+                if not user_msgs or not assistant_msgs:
+                    return  # Not enough messages yet
+
+                # Check if first assistant message has content
+                first_assistant = assistant_msgs[0]
+                if not first_assistant.get("content"):
+                    return  # First assistant message was tool_call only
+
+                should_generate = True
+            elif session.title_auto_generated:
+                # Check for re-generation threshold
+                msg_increment = (
+                    session.user_message_count
+                    - session.title_updated_at_user_message_count
+                )
+                if msg_increment >= 5:
+                    should_generate = True
+
+            if not should_generate:
+                return
+
+            # Get summary model or fallback to session model
+            summary_config = await self.app_setting_store.get_summary_model()
+
+            if summary_config is None:
+                # No summary model configured
+                if is_first_time:
+                    # Fallback: truncate first user message
+                    messages = await self.store.get_messages(session_id)
+                    user_msgs = [m for m in messages if m["role"] == "user"]
+                    if user_msgs and user_msgs[0].get("content"):
+                        title = TitleGenerator.truncate_title_from_message(
+                            user_msgs[0]["content"]
+                        )
+                        await self.store.update_session_title(
+                            session_id,
+                            title,
+                            session.user_message_count,
+                            False,  # expected_title_auto_generated
+                        )
+                return
+
+            # Get provider for title generation
+            provider_config = await self.provider_store.get_provider_config(
+                summary_config.provider_id
+            )
+            provider = OpenAIProvider(provider_config)
+            generator = TitleGenerator(provider, summary_config.model_name)
+
+            # Get all messages for context
+            messages = await self.store.get_messages(session_id, limit=1000)
+
+            # Generate title
+            generated_title = await generator.generate_title(messages)
+
+            if generated_title is None:
+                return  # Generation failed, silent ignore
+
+            # Optimistic lock write
+            success = await self.store.update_session_title(
+                session_id,
+                generated_title,
+                session.user_message_count,
+                session.title_auto_generated,
+            )
+
+            if success:
+                logger.info(
+                    "Auto-title generated: session_id={}, title={}",
+                    session_id,
+                    generated_title,
+                )
+            else:
+                logger.debug(
+                    "Auto-title write skipped (optimistic lock): session_id={}",
+                    session_id,
+                )
+
+        except Exception as e:
+            logger.warning(
+                "Auto-title generation failed: session_id={}, error={}",
+                session_id,
+                str(e),
+            )
