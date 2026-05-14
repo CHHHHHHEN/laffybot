@@ -371,6 +371,21 @@ class SQLiteProviderStore(ProviderStore):
         provider_id = provider_row["value"]
         model_id = model_row["value"]
 
+        if not model_id:
+            async with db.execute(
+                "SELECT name AS provider_name FROM providers WHERE provider_id = ?",
+                (provider_id,),
+            ) as cursor:
+                selection = await cursor.fetchone()
+            if selection is None:
+                return None
+            return ActiveSelection(
+                provider_id=provider_id,
+                model_id="",
+                provider_name=selection["provider_name"],
+                model_name="",
+            )
+
         async with db.execute(
             "SELECT p.name AS provider_name, pm.name AS model_name "
             "FROM providers p "
@@ -392,15 +407,15 @@ class SQLiteProviderStore(ProviderStore):
 
     async def set_active_selection(self, provider_id: str, model_id: str) -> None:
         db = await self._ensure_db()
-        # Validate provider and model exist
         await self.get_provider(provider_id)
-        async with db.execute(
-            "SELECT model_id FROM provider_models WHERE model_id = ? AND provider_id = ?",
-            (model_id, provider_id),
-        ) as cursor:
-            model_row = await cursor.fetchone()
-        if model_row is None:
-            raise ModelNotFoundError(model_id)
+        if model_id:
+            async with db.execute(
+                "SELECT model_id FROM provider_models WHERE model_id = ? AND provider_id = ?",
+                (model_id, provider_id),
+            ) as cursor:
+                model_row = await cursor.fetchone()
+            if model_row is None:
+                raise ModelNotFoundError(model_id)
 
         await db.execute(
             "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
