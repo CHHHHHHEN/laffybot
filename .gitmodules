@@ -4,3 +4,6 @@
 [submodule "third-party/hermes-agent"]
 	path = third-party/hermes-agent
 	url = https://github.com/NousResearch/hermes-agent
+[submodule "third-party/codex"]
+	path = third-party/codex
+	url = https://github.com/openai/codex
