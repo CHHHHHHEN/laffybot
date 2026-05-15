@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { ToastContainer } from '@/components/ui/Toast'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useGlobalEvents } from '@/hooks/use-global-events'
 import { useUiStore } from '@/stores/ui-store'
 
 function useTheme() {
@@ -33,6 +34,7 @@ function useTheme() {
 export function AppShell() {
   useKeyboardShortcuts()
   useTheme()
+  useGlobalEvents()
 
   return (
     <div className="flex h-screen overflow-hidden">

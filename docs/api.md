@@ -203,6 +203,7 @@ data: {"type": "done", "stop_reason": "completed", "usage": {"prompt_tokens": 15
 | `error` | 发生错误 | `error` (嵌套对象) | - |
 | `cancelled` | 请求被取消 | `reason` | - |
 | `ping` | 心跳事件 | `timestamp` | - |
+| `title_update` | 标题更新通知（全局事件） | `session_id`, `title` | - |
 
 > **注意:** `reasoning` 事件由后端统一处理不同 LLM 提供商的思维链格式差异（如 DeepSeek 的 `reasoning_content` 字段），对外暴露统一的事件格式，客户端无需关心底层实现细节。
 
@@ -468,6 +469,45 @@ GET /api/v1/tools
 
 **响应:**
 ```json
+[
+    {
+        "name": "read_file",
+        "description": "Read file contents",
+        "read_only": true,
+        "enabled": true
+    }
+]
+```
+
+### 10. 全局事件通道
+
+```
+GET /api/v1/events
+```
+
+**描述:**
+
+全局 SSE 端点，用于推送跨会话的实时事件。与消息流 SSE 分离，生命周期为应用级（页面打开期间持续存在）。
+
+**响应类型:** `text/event-stream`
+
+**事件类型:**
+
+| 事件 | 格式 | 说明 |
+|------|------|------|
+| `ping` | `event: ping\ndata: {"type":"ping","timestamp":"..."}\n\n` | 心跳保活（每 15 秒） |
+| `title_update` | `event: title_update\ndata: {"session_id":"xxx","title":"新标题"}\n\n` | 会话标题更新通知 |
+
+**使用场景:**
+
+- 标题生成完成后立即通知前端，无需轮询
+- 用户切换会话后仍能接收任意会话的事件
+
+**前端集成:**
+
+- 应用启动时建立连接（`useGlobalEvents` hook）
+- 断线自动重连（指数退避）
+- 收到 `title_update` 时刷新 sessions 查询
 [
     {
         "name": "read_file",

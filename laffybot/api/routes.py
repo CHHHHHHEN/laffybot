@@ -23,6 +23,7 @@ from laffybot.api.dependencies import (
     get_store,
     get_tool_registry,
 )
+from laffybot.api.event_bus import GlobalEvent, get_event_bus
 from laffybot.api.schemas import (
     HealthResponse,
     HistoryResponse,
@@ -292,6 +293,80 @@ async def delete_session(
 ) -> dict[str, str]:
     await manager.delete_session(session_id)
     return {"status": "deleted", "session_id": session_id}
+
+
+# ─── Global Events Route ────────────────────────────────────────────────────────
+
+
+@router.get("/events")
+async def global_events() -> StreamingResponse:
+    """Global SSE endpoint for real-time notifications.
+
+    This endpoint maintains a persistent SSE connection for the lifetime
+    of the application, pushing events like title updates to all connected clients.
+
+    Event types:
+    - ping: Heartbeat event (every 15s)
+    - title_update: Session title updated
+
+    Event format:
+        event: <type>
+        data: <json>
+    """
+
+    async def event_stream() -> AsyncGenerator[str, None]:
+        bus = get_event_bus()
+        heartbeat_interval = 15  # seconds
+        event_index = 0
+
+        logger.info("Global events SSE connection opened")
+
+        # Get the subscriber queue directly to avoid cancellation issues
+        # with async generators when using wait_for/shield patterns
+        queue: asyncio.Queue[GlobalEvent | None] = asyncio.Queue()
+        async with bus._lock:
+            bus._subscribers.append(queue)
+        logger.debug("Global events subscriber added, total={}", len(bus._subscribers))
+
+        try:
+            while True:
+                try:
+                    # Wait for event or heartbeat timeout
+                    event = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=heartbeat_interval,
+                    )
+                    if event is None:
+                        # Shutdown signal
+                        break
+                    event_index += 1
+                    yield f"id: evt_{event_index}\n{event.to_sse()}"
+                except asyncio.TimeoutError:
+                    # Send heartbeat ping
+                    event_index += 1
+                    yield f"id: evt_{event_index}\n{event_ping().to_sse()}"
+        except Exception as e:
+            logger.info("Global events SSE connection closed: {}", type(e).__name__)
+            logger.debug("Global events SSE connection error details: {}", e)
+        finally:
+            async with bus._lock:
+                try:
+                    bus._subscribers.remove(queue)
+                except ValueError:
+                    pass
+            logger.debug(
+                "Global events subscriber removed, remaining={}",
+                len(bus._subscribers),
+            )
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream", headers=headers
+    )
 
 
 @router.put("/sessions/{session_id}/model", response_model=SessionResponse)

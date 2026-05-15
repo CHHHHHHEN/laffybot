@@ -44,6 +44,7 @@
 | `GET /api/v1/settings/summary-model` | 高级设置页面加载 | `useSummaryModel` 查询 → 显示当前配置 |
 | `PUT /api/v1/settings/summary-model` | 用户保存总结模型配置 | `useSetSummaryModel` mutation → Toast 提示成功 |
 | `DELETE /api/v1/settings/summary-model` | 用户清除总结模型配置 | `useClearSummaryModel` mutation → Toast 提示成功 |
+| `GET /api/v1/events` | 应用启动时建立全局 SSE 连接 | `useGlobalEvents` hook → 接收全局事件（title_update 等） |
 
 ### 分页约定
 
@@ -67,10 +68,38 @@
 | `reasoning` | `appendToStreamBuffer('reasoning', text)` | 同上 |
 | `tool_call` | `addToolCallToBuffer(toolCall)` | 流期间工具调用暂存 buffer，结束时一并渲染 |
 | `tool_result` | `updateToolCallInBuffer(tool_call_id, updates)` | 更新 buffer 中的工具调用状态 |
-| `done` | `flushStreamBuffer()` → 更新最后一条 streaming assistant 消息为正式消息（原地替换，而非追加新消息），重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle，延迟轮询标题更新（1s/3s） | 移除流式光标，渲染完整回复，会话列表标题延迟更新 |
+| `done` | `flushStreamBuffer()` → 更新最后一条 streaming assistant 消息为正式消息（原地替换，而非追加新消息），重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle，刷新 sessions 查询 | 移除流式光标，渲染完整回复 |
 | `error` | `flushStreamBuffer()`（更新最后一条 streaming 消息，标记 isError=true），`setConnectionStatus('error')`，标记会话为 error | 消息气泡显示"发送失败" |
 | `cancelled` | `flushStreamBuffer()`，重置 buffer，`setConnectionStatus('disconnected')`，标记会话为 idle | 消息标记为中断 |
 | `ping` | 忽略（无操作） | 无 |
+
+## 全局事件通道
+
+应用启动时建立持久化的全局 SSE 连接，用于接收跨会话的实时事件：
+
+| 端点 | 生命周期 | 用途 |
+|------|----------|------|
+| `GET /api/v1/events` | 应用级（页面打开期间持续存在） | 全局事件推送 |
+
+### 全局事件类型
+
+| 事件类型 | 触发时机 | UI 处理 |
+|----------|----------|---------|
+| `title_update` | 标题生成完成（首次生成或重生成） | `useGlobalEvents` → `queryClient.invalidateQueries(['sessions'])` |
+| `ping` | 心跳保活（每 15 秒） | 忽略 |
+
+### 前端实现
+
+- **Hook**: `useGlobalEvents()` — 在 `AppShell` 中调用，应用启动时自动建立连接
+- **连接管理**: 断线自动重连（指数退避，最大 30 秒）
+- **事件处理**: 收到 `title_update` 时刷新 sessions 查询，实现标题实时更新
+
+### 设计理由
+
+全局事件通道与消息流 SSE 分离：
+- 消息流是请求-响应模式，连接随消息完成而关闭
+- 标题生成是异步后处理，可能在消息完成 10+ 秒后才产生结果
+- 全局通道独立于消息流，用户切换会话后仍能接收任意会话的事件
 
 ## 状态同步契约
 

@@ -192,6 +192,77 @@ export async function connectSseStream(
   }
 }
 
+/* ---- Global Events API ---- */
+
+export interface GlobalEvent {
+  type: 'title_update' | 'ping'
+  session_id?: string
+  title?: string
+  timestamp?: string
+}
+
+export async function connectGlobalEvents(
+  onEvent: (event: GlobalEvent) => void,
+  signal: AbortSignal
+): Promise<void> {
+  console.log('[connectGlobalEvents] Fetching SSE endpoint')
+  const response = await fetch(`${BASE_URL}/api/v1/events`, {
+    method: 'GET',
+    signal,
+  })
+
+  if (!response.ok) {
+    console.error('[connectGlobalEvents] Failed to connect:', response.status, response.statusText)
+    throw new ApiError(response.status, 'CONNECTION_ERROR', 'Failed to connect to global events')
+  }
+
+  console.log('[connectGlobalEvents] SSE connection established')
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('No response body')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      console.log('[connectGlobalEvents] Stream ended')
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    let currentEvent = 'ping'
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim()
+      } else if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim()
+        try {
+          const parsed = JSON.parse(data)
+          // Map the event based on SSE event type field
+          if (currentEvent === 'title_update') {
+            console.log('[connectGlobalEvents] Parsed title_update event:', parsed)
+            onEvent({
+              type: 'title_update',
+              session_id: parsed.session_id,
+              title: parsed.title,
+            })
+          } else if (currentEvent === 'ping') {
+            onEvent({ type: 'ping', timestamp: parsed.timestamp })
+          }
+        } catch {
+          // skip malformed JSON
+          console.warn('[connectGlobalEvents] Failed to parse SSE data:', data)
+        }
+      }
+    }
+  }
+}
+
 /* ---- Provider APIs ---- */
 
 export interface ProviderResponse {
@@ -383,12 +454,14 @@ export type SseEventType =
   | 'error'
   | 'cancelled'
   | 'ping'
+  | 'title_update'
 
 export interface SseEvent {
   type: SseEventType
   session_id?: string
   request_id?: string
   text?: string
+  title?: string
   tool_call_id?: string
   name?: string
   arguments?: Record<string, unknown>

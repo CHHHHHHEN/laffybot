@@ -113,13 +113,6 @@ export function ChatPage() {
           store.setSessionRequestId(currentSessionId, null)
           updateSessionStatus(currentSessionId, 'idle')
           queryClient.invalidateQueries({ queryKey: ['sessions'] })
-          // Delayed polling for auto-title update (backend title generation is async)
-          setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ['sessions'] })
-          }, 1000)
-          setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ['sessions'] })
-          }, 3000)
           break
         case 'error':
           store.flushSessionStreamBuffer(currentSessionId)

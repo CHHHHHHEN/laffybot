@@ -390,12 +390,21 @@ class SessionManager:
                         title = TitleGenerator.truncate_title_from_message(
                             user_msgs[0]["content"]
                         )
-                        await self.store.update_session_title(
+                        success = await self.store.update_session_title(
                             session_id,
                             title,
                             session.user_message_count,
                             False,  # expected_title_auto_generated
                         )
+                        if success:
+                            # Publish title_update event for fallback title
+                            from laffybot.api.event_bus import get_event_bus
+
+                            bus = get_event_bus()
+                            await bus.publish(
+                                "title_update",
+                                {"session_id": session_id, "title": title},
+                            )
                 return
 
             # Get provider for title generation
@@ -427,6 +436,14 @@ class SessionManager:
                     "Auto-title generated: session_id={}, title={}",
                     session_id,
                     generated_title,
+                )
+                # Publish title_update event to global event bus
+                from laffybot.api.event_bus import get_event_bus
+
+                bus = get_event_bus()
+                await bus.publish(
+                    "title_update",
+                    {"session_id": session_id, "title": generated_title},
                 )
             else:
                 logger.debug(

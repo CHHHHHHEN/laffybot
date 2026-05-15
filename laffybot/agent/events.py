@@ -18,6 +18,7 @@ EventType = Literal[
     "error",
     "cancelled",
     "ping",
+    "title_update",
 ]
 
 StopReason = Literal["completed", "max_iterations", "error", "cancelled"]
@@ -110,6 +111,10 @@ class SSEEvent:
 
         elif self.type == "ping":
             result["timestamp"] = self.timestamp
+
+        elif self.type == "title_update":
+            result["session_id"] = self.session_id
+            result["title"] = self.text
 
         return result
 
@@ -213,6 +218,19 @@ def event_ping(timestamp: str | None = None) -> SSEEvent:
     if timestamp is None:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return SSEEvent(type="ping", timestamp=timestamp)
+
+
+def event_title_update(session_id: str, title: str) -> SSEEvent:
+    """Create a title_update event for global event bus.
+
+    Args:
+        session_id: The session whose title was updated
+        title: The new title value
+
+    Returns:
+        SSEEvent: A title_update event
+    """
+    return SSEEvent(type="title_update", session_id=session_id, text=title)
 
 
 # Error code constants
