@@ -1,4 +1,4 @@
-# Laffybot - Inspried by nanobot
+# Laffybot - Inspired by nanobot
 
 # Laffybot 项目整体结构报告
 
@@ -398,7 +398,7 @@ AppShell
 
 ---
 
-## 七、已知问题/待办项
+## 六、已知问题/待办项
 
 1. ❌ 测试用例完全缺失
 2. ⚠️ 工具管理页面后端 toggle API 待实现（当前为只读列表）
