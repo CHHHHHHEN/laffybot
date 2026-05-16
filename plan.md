@@ -1,9 +1,15 @@
 # Plan
 
-<!-- Design document for the next feature. Fill this out before implementation. -->
-
 ## Goal
 
+
+
+## Acceptance Criteria
+
+
+
 ## Design
+
+
 
 ## Implementation Plan

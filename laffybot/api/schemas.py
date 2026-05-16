@@ -49,6 +49,7 @@ class SessionBase(BaseModel):
     status: str
     created_at: datetime
     title: str | None = None
+    archived_at: datetime | None = None
 
 
 class SessionResponse(SessionBase):

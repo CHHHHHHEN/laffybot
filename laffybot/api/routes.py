@@ -81,6 +81,7 @@ def _serialize_session(session: SessionInfo) -> dict[str, object]:
         "status": session.status,
         "created_at": session.created_at,
         "title": session.title,
+        "archived_at": session.archived_at,
     }
 
 
@@ -223,12 +224,13 @@ async def get_session(
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_sessions(
     status: SessionStatus | None = None,
+    archived: bool | None = None,
     limit: int = 20,
     offset: int = 0,
     manager: SessionManager = Depends(get_session_manager),
 ) -> dict[str, object]:
     sessions, total = await manager.list_sessions(
-        status=status, limit=limit, offset=offset
+        status=status, archived=archived, limit=limit, offset=offset
     )
     return {
         "sessions": [
@@ -290,6 +292,15 @@ async def cancel_session(
 ) -> dict[str, str]:
     request_id = await manager.cancel_request(session_id, payload.reason)
     return {"status": "cancelled", "session_id": session_id, "request_id": request_id}
+
+
+@router.post("/sessions/{session_id}/archive", response_model=SessionDetailResponse)
+async def archive_session(
+    session_id: str,
+    manager: SessionManager = Depends(get_session_manager),
+) -> dict[str, object]:
+    session = await manager.archive_session(session_id)
+    return _serialize_session_detail(session)
 
 
 @router.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)

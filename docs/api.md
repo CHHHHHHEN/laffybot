@@ -19,15 +19,15 @@ cryptography>=48.0.0
 
 加密密钥通过环境变量 `LAFFYBOT_ENCRYPTION_KEY` 设置，首次启动时必须配置。
 
-## 会话状态
+## 会话状态与归档
 
 会话具有以下状态：
 
 | 状态 | 描述 | 允许的操作 |
 |------|------|----------|
-| `idle` | 空闲，无正在进行的请求 | 发送消息、获取历史、删除 |
+| `idle` | 空闲，无正在进行的请求 | 发送消息、获取历史、删除、归档 |
 | `busy` | 正在处理请求 | 取消请求、获取信息 |
-| `error` | 发生错误，需处理 | 获取历史、删除 |
+| `error` | 发生错误，需处理 | 获取历史、删除、归档 |
 
 ### 状态转换
 
@@ -37,6 +37,10 @@ busy -> idle     (请求完成)
 busy -> error    (发生错误)
 error -> idle    (重新发送消息)
 ```
+
+### 归档
+
+会话归档用于标记已完成对话并触发记忆提取。归档后会话仍可继续对话，但记忆提取只会在首次归档时触发一次。已归档会话的 `archived_at` 字段非空。
 
 ## 并发控制
 
@@ -111,7 +115,8 @@ GET /api/v1/sessions/{session_id}
     "status": "idle",
     "created_at": "2024-01-15T10:30:00Z",
     "message_count": 5,
-    "current_request_id": null
+    "current_request_id": null,
+    "archived_at": null
 }
 ```
 
@@ -301,7 +306,33 @@ event: message
 data: {"type": "done", "stop_reason": "cancelled"}
 ```
 
-### 6. 系统提示设置
+### 6. 归档会话
+
+```
+POST /api/v1/sessions/{session_id}/archive
+```
+
+归档会话并触发记忆提取。归档后会话仍可继续对话，但记忆提取最多触发一次。已归档会话再次归档返回 `409 SESSION_ALREADY_ARCHIVED`。
+
+**响应:**
+```json
+{
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "model": "deepseek-ai/DeepSeek-V3",
+    "status": "idle",
+    "created_at": "2024-01-15T10:30:00Z",
+    "message_count": 5,
+    "current_request_id": null,
+    "archived_at": "2024-01-15T11:00:00Z",
+    "title_auto_generated": true
+}
+```
+
+**错误响应:**
+- `409 SESSION_BUSY`: 会话正在处理请求，无法归档
+- `409 SESSION_ALREADY_ARCHIVED`: 会话已归档
+
+### 7. 系统提示设置
 
 ```
 GET /api/v1/settings/system-prompt
@@ -335,7 +366,7 @@ PUT /api/v1/settings/system-prompt
 > 系统提示为全局设置，对所有新会话生效。重启后恢复为默认值。
 > 若已配置 `system_prompt_template`（config.json），模板将作为完整提示词，此处设置不生效。
 
-### 7. 删除会话
+### 8. 删除会话
 
 ```
 DELETE /api/v1/sessions/{session_id}
@@ -351,7 +382,7 @@ DELETE /api/v1/sessions/{session_id}
 
 > **注意：** 删除操作会从数据库中永久移除会话及其所有消息。
 
-### 7. 列出所有会话
+### 9. 列出所有会话
 
 ```
 GET /api/v1/sessions
@@ -361,6 +392,7 @@ GET /api/v1/sessions
 - `limit` (可选): 返回数量限制，默认 20
 - `offset` (可选): 分页偏移，默认 0
 - `status` (可选): 按状态过滤，可选值: `idle`, `busy`, `error`
+- `archived` (可选): 按归档状态过滤，可选值: `true`, `false`
 
 **响应:**
 ```json
@@ -371,7 +403,8 @@ GET /api/v1/sessions
             "model": "deepseek-ai/DeepSeek-V3",
             "status": "idle",
             "created_at": "2024-01-15T10:30:00Z",
-            "message_count": 5
+            "message_count": 5,
+            "archived_at": null
         }
     ],
     "total": 1,
@@ -572,6 +605,7 @@ GET /api/v1/events
 | 404 | MODEL_NOT_FOUND | 模型不存在 |
 | 409 | SESSION_BUSY | 会话正在处理请求 |
 | 409 | SESSION_NOT_BUSY | 会话当前无请求可取消 |
+| 409 | SESSION_ALREADY_ARCHIVED | 会话已归档 |
 | 409 | SESSION_STATE_ERROR | 会话状态转换冲突 |
 | 409 | MODEL_NAME_CONFLICT | 同一提供商下模型名重复 |
 | 400 | TOOL_VALIDATION_ERROR | 工具参数校验失败 |

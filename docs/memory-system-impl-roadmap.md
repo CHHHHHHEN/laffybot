@@ -1,7 +1,7 @@
 # 记忆系统实现路线
 
 > **实现状态**：Phase 0 ✅ 已完成，Phase 1 ✅ 已完成，Phase 2 ✅ 已完成，Phase 2 续 ✅ 已完成
-> **最后更新**：2026-05-16
+> **最后更新**：2026-05-16（记忆提取时机已更新：详见本期 archive）
 >
 > **文档范围说明**：本文档规划将 Codex 两阶段记忆管道选择性迁移到 Laffybot 的实现路线。阅读前请先了解 `docs/third-party/codex/codex-memory-system-design.md`。
 >
@@ -203,7 +203,7 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ### SessionManager
 
-- `send_message()` 完成后新增异步触发：在现有 Auto-Title 触发逻辑后追加记忆提取触发
+- Session 归档时触发记忆提取（`POST /sessions/{session_id}/archive` 路由调用 `SessionManager.archive_session()`，后者在设置 `archived_at` 后 fire-and-forget 调用 `_trigger_extract`）
 - `send_message()` 开始前的消息构建流程中，同步加载当前 Phase 2 产出到模板变量
 - 通过依赖注入引入 MemoryManager 实例
 
@@ -236,11 +236,13 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 > **Implementation record**: see `docs/archive/phase2-continue-memory-injection-fix-2026-05-16.md`
 
+> **Implementation record**: see `docs/archive/memory-extraction-timing-fix-2026-05-16.md`
+
 ## 设计决策
 
 | 决策点 | 选择 | 替代方案 | 理由 |
 |--------|------|---------|------|
-| 提取时机 | Session 完成后异步触发 | 定时任务、启动时扫描 | 时机明确，与现有 Auto-Title 模式一致 |
+| 提取时机 | Session 归档时异步触发（`POST /sessions/{session_id}/archive`） | 定时任务、Session 完成时立即触发 | 归档时机由用户控制，避免对话过程中打断；每个 Session 最多触发一次 |
 | 存储介质 | 数据库（SQLite `memories` 表） | 文件系统、纯 SQLite | 与 session/message 同库，简化备份和运维；外键约束保证数据完整性 |
 | 注入方式 | 系统提示模板变量 | 消息前缀、Tool 注入 | 改动最小（仅需新增 extra_var），不增加消息数 |
 | 选择算法 | usage_count + last_usage | 向量相似度 | 无需外部依赖，实现简单 |

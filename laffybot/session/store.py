@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     title TEXT,
     user_message_count INTEGER NOT NULL DEFAULT 0,
     title_updated_at_user_message_count INTEGER NOT NULL DEFAULT 0,
-    title_auto_generated INTEGER NOT NULL DEFAULT 0
+    title_auto_generated INTEGER NOT NULL DEFAULT 0,
+    archived_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
@@ -111,6 +112,10 @@ class SessionStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def archive_session(self, session_id: str) -> SessionInfo:
+        raise NotImplementedError
+
+    @abstractmethod
     async def delete_session(self, session_id: str) -> None:
         raise NotImplementedError
 
@@ -118,6 +123,7 @@ class SessionStore(ABC):
     async def list_sessions(
         self,
         status: SessionStatus | None = None,
+        archived: bool | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[SessionInfo], int]:
@@ -220,6 +226,15 @@ class SQLiteStore(SessionStore):
         if migrated:
             logger.info("Database migration completed: added token columns")
 
+        # Migration 2: Add archived_at column to sessions table
+        async with db.execute("PRAGMA table_info(sessions)") as cursor:
+            columns = {row["name"] for row in await cursor.fetchall()}
+
+        if "archived_at" not in columns:
+            await db.execute("ALTER TABLE sessions ADD COLUMN archived_at TEXT")
+            await db.commit()
+            logger.info("Database migration completed: added archived_at column")
+
     @staticmethod
     def _now() -> datetime:
         return datetime.now(timezone.utc)
@@ -252,6 +267,9 @@ class SQLiteStore(SessionStore):
                 "title_updated_at_user_message_count"
             ],
             title_auto_generated=bool(row["title_auto_generated"]),
+            archived_at=SQLiteStore._parse_dt(row["archived_at"])
+            if row["archived_at"]
+            else None,
         )
 
     @staticmethod
@@ -395,6 +413,18 @@ class SQLiteStore(SessionStore):
             raise SessionStateError(session_id, current.status)
         raise SessionNotFoundError(session_id)
 
+    async def archive_session(self, session_id: str) -> SessionInfo:
+        db = await self._ensure_db()
+        now = self._format_dt(self._now())
+        cursor = await db.execute(
+            "UPDATE sessions SET archived_at = ?, updated_at = ? WHERE session_id = ?",
+            (now, now, session_id),
+        )
+        await db.commit()
+        if cursor.rowcount == 0:
+            raise SessionNotFoundError(session_id)
+        return await self.get_session(session_id)
+
     async def delete_session(self, session_id: str) -> None:
         db = await self._ensure_db()
         cursor = await db.execute(
@@ -407,6 +437,7 @@ class SQLiteStore(SessionStore):
     async def list_sessions(
         self,
         status: SessionStatus | None = None,
+        archived: bool | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[SessionInfo], int]:
@@ -416,6 +447,10 @@ class SQLiteStore(SessionStore):
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
+        if archived is True:
+            clauses.append("archived_at IS NOT NULL")
+        elif archived is False:
+            clauses.append("archived_at IS NULL")
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         count_sql = f"SELECT COUNT(*) AS total FROM sessions {where}"
         async with db.execute(count_sql, params) as cursor:

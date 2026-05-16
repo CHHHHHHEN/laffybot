@@ -22,6 +22,7 @@ from laffybot.providers.errors import ModelNotFoundError, ProviderNotFoundError
 from laffybot.providers.openai import OpenAIProvider
 from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
+    SessionAlreadyArchivedError,
     SessionBusyError,
     SessionNotBusyError,
 )
@@ -112,10 +113,13 @@ class SessionManager:
     async def list_sessions(
         self,
         status: SessionStatus | None = None,
+        archived: bool | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[SessionInfo], int]:
-        return await self.store.list_sessions(status=status, limit=limit, offset=offset)
+        return await self.store.list_sessions(
+            status=status, archived=archived, limit=limit, offset=offset
+        )
 
     async def get_session_history(
         self,
@@ -130,6 +134,20 @@ class SessionManager:
             raise SessionBusyError(session_id, session.current_request_id)
         await self.store.delete_session(session_id)
         logger.info("Session deleted: session_id={}", session_id)
+
+    async def archive_session(self, session_id: str) -> SessionInfo:
+        """Archive a session and trigger memory extraction."""
+        session = await self.store.get_session(session_id)
+        if session.status == "busy":
+            raise SessionBusyError(session_id, session.current_request_id)
+        if session.archived_at is not None:
+            raise SessionAlreadyArchivedError(session_id)
+
+        archived = await self.store.archive_session(session_id)
+
+        asyncio.create_task(self._trigger_extract(session_id))
+
+        return archived
 
     async def cancel_request(self, session_id: str, reason: str | None = None) -> str:
         session = await self.store.get_session(session_id)
@@ -253,8 +271,6 @@ class SessionManager:
                         # Trigger auto-title generation asynchronously
                         if response_status == "idle" and assistant_chunks:
                             asyncio.create_task(self._trigger_auto_title(session_id))
-                            # Trigger memory extraction asynchronously
-                            asyncio.create_task(self._trigger_extract(session_id))
                         break
             except ProviderNotFoundError as exc:
                 log.error("Provider not found: {}", exc)

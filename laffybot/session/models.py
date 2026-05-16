@@ -30,6 +30,7 @@ class SessionInfo:
     user_message_count: int = 0
     title_updated_at_user_message_count: int = 0
     title_auto_generated: bool = False
+    archived_at: datetime | None = None
 
 
 def validate_status(status: str) -> SessionStatus:

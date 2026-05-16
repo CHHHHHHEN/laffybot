@@ -17,7 +17,15 @@
 ## 实现状态总览
 
 | 功能模块 | 实现状态 | 实现文件 |
-|---------|---------|----------|\n| SQLiteStore 类 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore` |\n| sessions 表 | ✅ 已实现 | 包含所有设计字段 |\n| messages 表 | ✅ 已实现 | 包含 token 字段（迁移已实现） |\n| 外键约束 | ✅ 已实现 | `PRAGMA foreign_keys = ON` |\n| WAL 模式 | ✅ 已实现 | `PRAGMA journal_mode = WAL` |\n| 乐观锁更新 | ✅ 已实现 | `update_session_status` 支持乐观锁 |\n| Token 元数据字段 | ✅ 已实现 | `input_tokens`, `output_tokens` 列 |
+|---------|---------|----------|
+| SQLiteStore 类 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore` |
+| sessions 表 | ✅ 已实现 | 包含所有设计字段（含 archived_at） |
+| messages 表 | ✅ 已实现 | 包含 token 字段（迁移已实现） |
+| 外键约束 | ✅ 已实现 | `PRAGMA foreign_keys = ON` |
+| WAL 模式 | ✅ 已实现 | `PRAGMA journal_mode = WAL` |
+| 乐观锁更新 | ✅ 已实现 | `update_session_status` 支持乐观锁 |
+| Token 元数据字段 | ✅ 已实现 | `input_tokens`, `output_tokens` 列 |
+| 会话归档 | ✅ 已实现 | `archive_session()` 设置 `archived_at` |
 
 ## 概述
 
@@ -71,7 +79,8 @@ CREATE TABLE sessions (
     current_request_id TEXT,
     error_message TEXT,
     system_prompt TEXT,
-    max_iterations INTEGER NOT NULL DEFAULT 10
+    max_iterations INTEGER NOT NULL DEFAULT 10,
+    archived_at TEXT
 );
 
 CREATE INDEX idx_sessions_status ON sessions(status);
@@ -86,6 +95,7 @@ CREATE INDEX idx_sessions_created_at ON sessions(created_at);
 - `current_request_id`: 当前活跃请求 ID，用于取消操作
 - `system_prompt`: 会话级系统提示词，在创建会话时存储，用于每次对话的上下文构建
 - `max_iterations`: Agent 最大迭代次数，在创建会话时存储，控制 Agent 执行的最大循环次数
+- `archived_at`: ISO 8601 格式时间戳，非空表示会话已归档
 
 **system_prompt 和 max_iterations 存储机制：**
 - **创建时存储**：`create_session()` 接收这两个参数并持久化到数据库
@@ -271,6 +281,16 @@ async def update_session_status(
 - **适合读多写少**：会话状态更新频率较低，冲突概率小
 - **配合应用层锁**：与 SessionManager 的 asyncio.Lock 配合使用，提供双重保护
 
+#### archive_session
+
+**实现策略：**
+1. 设置 `archived_at` 和 `updated_at` 为当前时间
+2. 执行 UPDATE 语句
+3. 检查受影响行数判断操作是否成功
+4. 返回归档后的 SessionInfo 实例
+
+**异常处理：** 如果会话不存在（受影响行数为 0），抛出 SessionNotFoundError
+
 #### delete_session
 
 **实现策略：**
@@ -285,8 +305,8 @@ async def update_session_status(
 #### list_sessions
 
 **实现策略：**
-1. 构建动态 SQL（支持状态过滤）
-2. 支持状态过滤（可选）
+1. 构建动态 SQL（支持状态和归档过滤）
+2. 支持状态过滤（可选），支持归档过滤（`archived=True` → `archived_at IS NOT NULL`；`archived=False` → `archived_at IS NULL`）
 3. 使用 LIMIT 和 OFFSET 分页
 4. 执行 COUNT 查询获取总数
 5. 返回 (会话列表, 总数) 元组
@@ -338,6 +358,7 @@ async def update_session_status(
 | `create_session` | ✅ 是 | 设置为创建时间 |
 | `update_session_status` | ✅ 是 | 状态变更时更新 |
 | `save_message` | ✅ 是 | 保存新消息时更新 |
+| `archive_session` | ✅ 是 | 归档时同步更新时间戳 |
 | `get_session` | ❌ 否 | 只读操作，不更新 |
 | `get_messages` | ❌ 否 | 只读操作，不更新 |
 | `list_sessions` | ❌ 否 | 只读操作，不更新 |
