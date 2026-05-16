@@ -60,6 +60,20 @@ class MemoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def get_top_memories(self, top_n: int) -> list[dict[str, Any]]:
+        """Query top-N memories scored by usage frequency and recency.
+
+        Returns structured results including session_title for template rendering.
+        Returns empty list if no memories exist.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def increment_usage(self, memory_id: str) -> None:
+        """Increment usage_count and update last_usage for a memory."""
+        raise NotImplementedError
+
+    @abstractmethod
     async def delete_memory(self, memory_id: str) -> None:
         raise NotImplementedError
 
@@ -187,6 +201,34 @@ class SQLiteMemoryStore(MemoryStore):
         ) as cursor:
             rows = await cursor.fetchall()
         return [self._row_to_memory(row) for row in rows]
+
+    async def get_top_memories(self, top_n: int) -> list[dict[str, Any]]:
+        db = await self._ensure_db()
+        async with db.execute(
+            """
+            SELECT m.*, s.title AS session_title
+            FROM memories m
+            LEFT JOIN sessions s ON s.session_id = m.session_id
+            ORDER BY m.usage_count DESC, m.last_usage DESC NULLS LAST
+            LIMIT ?
+            """,
+            (top_n,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [self._row_to_memory(row, include_session_title=True) for row in rows]
+
+    async def increment_usage(self, memory_id: str) -> None:
+        db = await self._ensure_db()
+        now = self._format_dt(self._now())
+        await db.execute(
+            """
+            UPDATE memories
+            SET usage_count = usage_count + 1, last_usage = ?
+            WHERE memory_id = ?
+            """,
+            (now, memory_id),
+        )
+        await db.commit()
 
     async def delete_memory(self, memory_id: str) -> None:
         db = await self._ensure_db()

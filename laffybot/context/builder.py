@@ -45,6 +45,7 @@ class SimpleContextBuilder(ContextBuilder):
         current_message: str,
         model: str | None = None,
         created_at: datetime | None = None,
+        **extra_vars: Any,
     ) -> list[dict[str, Any]]:
         """Build complete message context with capacity control.
 
@@ -65,6 +66,7 @@ class SimpleContextBuilder(ContextBuilder):
                 session_id=session_id,
                 model=model,
                 created_at=created_at,
+                **extra_vars,
             )
         elif effective_prompt is None:
             effective_prompt = self._config.system_prompt

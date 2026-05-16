@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
+from laffybot.context.tokens import ApproximateTokenCounter
 from laffybot.memory.config import MemoryConfig
 from laffybot.memory.store import MemoryStore, SQLiteMemoryStore
 
@@ -82,6 +83,43 @@ class MemoryManager:
         )
         log.info("Memory extracted: session_id={}, memory_id={}", session_id, memory_id)
         return memory_id
+
+    async def get_memories_for_injection(
+        self, top_n: int, max_tokens: int
+    ) -> list[dict[str, Any]]:
+        """Return structured memory list for context injection.
+
+        Delegates to MemoryStore for scoring, then truncates by token budget.
+        Each item contains memory_id, content, tags, and session_title.
+
+        Returns empty list when store is unavailable or no memories exist.
+        """
+        if self._store is None:
+            return []
+
+        candidates = await self._store.get_top_memories(top_n)
+        if not candidates:
+            return []
+
+        token_counter = ApproximateTokenCounter()
+        result: list[dict[str, Any]] = []
+        total_tokens = 0
+
+        for mem in candidates:
+            mem_tokens = token_counter.count_tokens(mem["content"])
+            if total_tokens + mem_tokens > max_tokens and result:
+                break
+            result.append(
+                {
+                    "memory_id": mem["memory_id"],
+                    "content": mem["content"],
+                    "tags": mem["tags"],
+                    "session_title": mem.get("session_title"),
+                }
+            )
+            total_tokens += mem_tokens
+
+        return result
 
     async def close(self) -> None:
         if self._store is not None:

@@ -52,6 +52,7 @@ class ContextBuilder(ABC):
         current_message: str,
         model: str | None = None,
         created_at: datetime | None = None,
+        **extra_vars: Any,
     ) -> list[dict[str, Any]]:
         """Build complete message context for LLM.
 
@@ -62,6 +63,7 @@ class ContextBuilder(ABC):
             current_message: Current user input.
             model: Model name for template variables.
             created_at: Session creation timestamp for template variables.
+            **extra_vars: Additional template variables passed to system prompt renderer.
 
         Returns:
             Complete message list: [system, history..., current]

@@ -322,6 +322,22 @@ class SessionManager:
         model: str | None = None,
     ) -> list[dict[str, Any]]:
         history = await self.store.get_messages(session.session_id)
+
+        extra_vars: dict[str, Any] = {}
+        if self.memory_manager is not None:
+            try:
+                memories = await self.memory_manager.get_memories_for_injection(
+                    top_n=self.memory_manager.config.top_n_for_injection,
+                    max_tokens=self.memory_manager.config.max_memory_tokens,
+                )
+                extra_vars["memories"] = memories
+            except Exception:
+                logger.warning(
+                    "Failed to load memories for injection: session_id={}",
+                    session.session_id,
+                )
+                extra_vars["memories"] = []
+
         return await self._context_builder.build_messages(
             session_id=session.session_id,
             system_prompt=session.system_prompt,
@@ -329,6 +345,7 @@ class SessionManager:
             current_message=current_message,
             model=model or session.model_name,
             created_at=session.created_at,
+            **extra_vars,
         )
 
     @staticmethod

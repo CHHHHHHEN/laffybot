@@ -1,6 +1,6 @@
 # 记忆系统实现路线
 
-> **实现状态**：Phase 0 ✅ 已完成，Phase 1 ✅ 已完成
+> **实现状态**：Phase 0 ✅ 已完成，Phase 1 ✅ 已完成，Phase 2 ✅ 已完成
 > **最后更新**：2026-05-16
 >
 > **文档范围说明**：本文档规划将 Codex 两阶段记忆管道选择性迁移到 Laffybot 的实现路线。阅读前请先了解 `docs/third-party/codex/codex-memory-system-design.md`。
@@ -147,7 +147,7 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ---
 
-### Phase 2：上下文注入
+### Phase 2：上下文注入 ✅ 已实现
 
 **目标**：在新建 Session 时将记忆注入上下文，使 Agent 知道先前会话的知识。
 
