@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 
-from .types import ContextConfig
+from .types import ContextConfig, RegionInfo
 
 
 class TokenCounter(ABC):
@@ -53,7 +53,7 @@ class ContextBuilder(ABC):
         model: str | None = None,
         created_at: datetime | None = None,
         **extra_vars: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], RegionInfo | None]:
         """Build complete message context for LLM.
 
         Args:
@@ -66,7 +66,7 @@ class ContextBuilder(ABC):
             **extra_vars: Additional template variables passed to system prompt renderer.
 
         Returns:
-            Complete message list: [system, history..., current]
+            Tuple of (complete message list, optional region info for compression).
         """
         ...
 

@@ -1,5 +1,14 @@
-"""Types for context building - re-exported from config."""
+"""Types for context building."""
+
+from dataclasses import dataclass, field
 
 from laffybot.config import ContextConfig
 
-__all__ = ["ContextConfig"]
+
+@dataclass
+class RegionInfo:
+    message_ids: list[int] = field(default_factory=list)
+    token_ratio: float = 0.0
+
+
+__all__ = ["ContextConfig", "RegionInfo"]

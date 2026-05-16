@@ -15,7 +15,8 @@ from laffybot.agent.runner import AgentRunner, AgentRunSpec
 from laffybot.agent.title_generator import TitleGenerator
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
-from laffybot.context import ContextBuilder, SimpleContextBuilder
+from laffybot.context import ContextBuilder, LLMSummarizer, SimpleContextBuilder
+from laffybot.context.types import RegionInfo
 from laffybot.memory import MemoryManager
 from laffybot.providers.errors import ModelNotFoundError, ProviderNotFoundError
 from laffybot.providers.openai import OpenAIProvider
@@ -184,10 +185,22 @@ class SessionManager:
                 log.debug("Session status changed: idle -> busy")
                 await self.store.save_message(session_id, "user", content)
 
-                messages = await self._build_messages(
+                messages, region_info = await self._build_messages(
                     session, content, session.model_name
                 )
                 provider = OpenAIProvider(provider_config)
+
+                if region_info is not None:
+                    compress_model = (
+                        self._context_builder.config.compress_model
+                        or session.model_name
+                    )
+                    summarizer = LLMSummarizer(provider, compress_model)
+                    asyncio.create_task(
+                        self._fire_summary_and_replace(
+                            session_id, region_info, summarizer
+                        )
+                    )
                 runner = AgentRunner(provider)
                 spec = AgentRunSpec(
                     initial_messages=messages,
@@ -319,7 +332,7 @@ class SessionManager:
         session: SessionInfo,
         current_message: str,
         model: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], RegionInfo | None]:
         history = await self.store.get_messages(session.session_id)
 
         extra_vars: dict[str, Any] = {}
@@ -346,6 +359,50 @@ class SessionManager:
             created_at=session.created_at,
             **extra_vars,
         )
+
+    async def _fire_summary_and_replace(
+        self,
+        session_id: str,
+        region_info: RegionInfo,
+        summarizer: LLMSummarizer,
+    ) -> None:
+        """Asynchronously summarize and replace a compressed message region.
+
+        Runs as a fire-and-forget task. All exceptions are caught internally.
+        """
+        try:
+            messages = await self.store.get_messages_by_ids(
+                session_id, region_info.message_ids
+            )
+            if not messages:
+                logger.debug(
+                    "Compression skipped: no messages found for region: session_id={}",
+                    session_id,
+                )
+                return
+
+            summary = await summarizer.summarize(messages)
+            if not summary:
+                logger.warning(
+                    "Compression skipped: summary empty: session_id={}",
+                    session_id,
+                )
+                return
+
+            await self.store.replace_compressed_region(
+                session_id, region_info.message_ids, summary
+            )
+            logger.info(
+                "Compressed region replaced: session_id={}, messages={}",
+                session_id,
+                len(region_info.message_ids),
+            )
+        except Exception:
+            logger.warning(
+                "Summary and replace failed: session_id={}",
+                session_id,
+                exc_info=True,
+            )
 
     @staticmethod
     def _extract_error_message(error: dict[str, Any] | None) -> str | None:

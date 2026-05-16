@@ -20,7 +20,7 @@
 | SessionManager 集成 | ✅ 已实现 | `laffybot/session/manager.py` → `_build_messages` |
 | 记忆注入（Phase 2） | ✅ 已实现 | `laffybot/session/manager.py` → `_build_messages`（通过 `**extra_vars` 注入 `memories`） |
 | Token 元数据持久化 | ✅ 已实现 | `laffybot/session/store.py` → `save_message` |
-| 智能历史压缩 | ❌ 未实现 | 设计中，当前使用简单截断 |
+| 智能历史压缩 | ✅ 已实现 | `laffybot/context/compressor.py` → 工具输出裁剪 + 压缩检测 + LLM 摘要 |
 | 知识库加载 | ❌ 未实现 | 设计中 |
 
 ## 概述
@@ -232,28 +232,28 @@ def build_messages(
 
 ### 容量控制策略
 
-> **实现状态**: ✅ 已实现 | **参考**: `laffybot/context/builder.py:_apply_capacity_control`
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/context/builder.py:_apply_capacity_control`, `laffybot/context/compressor.py`
 
 **配置参数：** ✅ 已实现（`laffybot/config.py:ContextConfig`）
 - `max_tokens: int | None` - 上下文最大 token 数量（包含系统提示、历史和当前消息）
 - `max_messages: int | None` - 历史消息最大数量限制
-- `min_preserve_pairs: int` - 最小保留用户-助手消息对数（默认 3）
+- `enable_compression: bool` - 全局压缩开关（默认开启）
+- `compress_threshold_ratio: float` - token 使用率阈值（默认 0.8）
+- `compress_preserve_pairs: int` - 完整保留的最近消息对数（默认 3）
+- `compress_tool_output_max_chars: int` - 工具输出最大字符数（默认 2000）
 
-**截断策略：** ✅ 已实现
+**容量控制策略：** ✅ 已实现
 - 始终保留系统提示和当前用户消息
-- 从最旧的历史消息开始截断（按用户-助手消息对移除）
-- 支持配置最小保留消息数（确保对话连贯性）
+- 阶段 0：工具输出裁剪（同步）—— 裁剪过长工具输出
+- 阶段 1：压缩检测（同步）—— 检测是否需要语义压缩
+- 不再执行 FIFO 截断，压缩失败时保持原始历史不变
 
 **决策流程：** ✅ 已实现
 ```
-1. 检查当前上下文 token 数
-2. 若超出 max_tokens：
-   a. 移除最旧的用户-助手消息对
-   b. 重新计算 token 数
-   c. 重复直到满足容量限制或达到最小保留数
-3. 若超出 max_messages：
-   a. 移除最旧的用户-助手消息对
-   b. 重复直到满足消息数量限制
+1. 工具输出裁剪（prune_tool_outputs）
+2. 压缩检测（CompressionDetector.detect）
+3. 若区域可压缩 → 返回 RegionInfo，由 SessionManager 异步执行 LLM 摘要
+4. 压缩结果不影响当前轮，下轮生效
 ```
 
 ## 设计优势
@@ -317,147 +317,87 @@ def build_messages(
 
 ### 智能历史压缩
 
-> **实现状态**: ❌ 未实现 | **当前行为**: 简单截断最旧消息对
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/context/compressor.py`
 
 **设计目标：**
-在容量限制下，优先保留关键信息，而非简单截断最旧消息。
+在容量限制下，将早期历史消息压缩为摘要，替代 FIFO 粗暴移除策略。保留关键信息的同时延长对话有效轮数。
 
-**当前实现说明**：
-- 当前使用简单的 FIFO 截断策略
-- 按"用户-助手消息对"为单位移除最旧历史
-- 保证 `min_preserve_pairs` 数量的最近对话不被截断
-- **参考**: `laffybot/context/builder.py:_apply_capacity_control`
+**实现架构**：
 
-#### 压缩配置
+系统提供两层防御：
 
-**触发条件配置：**
-- `trigger_threshold`：容量使用率阈值（默认 0.8，即 80%）❌ 未实现
-- `min_preserve_pairs`：最少保留对话轮数（默认 3 轮，即 6 条消息）✅ 已实现
-
-**压缩策略配置：**
-- `preserve_recent_messages`：完整保留的最近消息数（默认 6 条）❌ 未实现
-- `compression_ratio`：压缩目标比例（默认 0.3，即压缩至原大小的 30%）❌ 未实现
-
-**关键信息识别配置：**
-- `preserve_tool_calls`：是否保留工具调用及结果（默认 True）❌ 未实现
-- `preserve_errors`：是否保留错误和重试记录（默认 True）❌ 未实现
-- `preserve_decisions`：是否保留用户决策确认（默认 True）❌ 未实现
-
-#### 压缩策略详解
-
-**策略一：关键信息识别与保留** ❌ 未实现
-
-消息优先级分类：
-- **高优先级（必须保留）**：
-  - 工具调用及其结果（包含重要状态信息）
-  - 错误和重试记录（调试和问题追踪）
-  - 用户决策确认（明确的关键选择）
-  - 最近 N 条消息（保持对话连贯性）
-
-- **中优先级（摘要保留）**：
-  - 常规对话内容
-  - 信息查询和回复
-  - 状态更新通知
-
-- **低优先级（可移除）**：
-  - 闲聊和寒暄
-  - 重复性问题
-  - 已被后续消息替代的过时信息
-
-**策略二：分层压缩** ❌ 未实现
+1. **工具输出裁剪（Pruning）**：同步裁剪工具消息的过长输出内容
+2. **语义摘要压缩（Compaction）**：异步调用 LLM 生成历史摘要
 
 ```
-完整上下文结构：
-┌─────────────────────────────────────┐
-│ 系统提示（始终保留）                  │  ✅ 已实现
-├─────────────────────────────────────┤
-│ 最近 N 条消息（完整保留）             │  ❌ 未实现 ← preserve_recent_messages
-├─────────────────────────────────────┤
-│ 关键信息消息（完整保留）              │  ❌ 未实现 ← 工具调用、错误、决策
-├─────────────────────────────────────┤
-│ 中间历史消息（摘要压缩）              │  ❌ 未实现 ← 压缩为摘要形式
-├─────────────────────────────────────┤
-│ 最旧历史消息（完全移除）              │  ✅ 已实现 ← 当前截断策略
-├─────────────────────────────────────┤
-│ 当前用户消息（始终保留）              │  ✅ 已实现
-└─────────────────────────────────────┘
+阶段〇（同步，_apply_capacity_control 入口）：
+   prune_tool_outputs(messages) → pruned_messages
+   裁剪历史中工具消息的过长输出内容
+
+阶段一（同步，CompressionDetector）：
+   detect(pruned_messages) → RegionInfo | None
+   检查是否需要压缩，标记可压缩区域
+
+阶段二（异步，SessionManager 内，与主 LLM 请求并发）：
+   LLMSummarizer.summarize(messages_in_region) → summary_text
+   发起非流式 LLM 摘要请求
+
+阶段三（异步，摘要完成后）：
+   store.replace_compressed_region(session_id, region_info, summary_text)
+   用摘要消息替换被压缩的消息
 ```
 
-**策略三：摘要生成** ❌ 未实现
+**关键设计决策：**
+- 工具输出裁剪（同步）在 `_apply_capacity_control` 入口执行，先裁剪再检测
+- 裁剪只修改消息内容，不涉及存储写入
+- 压缩检测（同步）在 `SimpleContextBuilder` 中，不引入 Provider 依赖
+- LLM 摘要（异步）在 `SessionManager` 中，复用已创建的 Provider
+- 摘要结果不影响当前轮，下轮构建消息时读取到的是替换后的历史
+- 压缩失败时保持原始历史不变，后续请求重新评估
 
-摘要生成方式：
-- **规则提取**（轻量级）：提取关键实体、时间、状态变化 ❌ 未实现
-- **LLM 摘要**（可选）：使用 LLM 生成语义摘要（需额外调用）❌ 未实现
+**实现组件**：
 
-摘要消息格式：
-- `role`：使用 "system" 标识摘要消息
-- `content`：摘要文本内容，以 "[摘要]" 前缀标识
-- `is_summary`：标记为摘要消息
-- `summarized_messages`：被摘要的消息数量
-- `key_entities`：提取的关键实体列表
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| `ToolOutputPruner` | `compressor.py` | 同步裁剪工具消息输出内容至 `compress_tool_output_max_chars` |
+| `CompressionDetector` | `compressor.py` | 同步检测是否需要压缩，返回 `RegionInfo` |
+| `LLMSummarizer` | `compressor.py` | 接收 Provider + model，调用非流式 `chat_completion` 生成结构化摘要 |
+| `RegionInfo` | `types.py` | 数据类，包含可压缩消息 ID 列表和 token 占比 |
 
-#### 压缩触发条件 ❌ 未实现
+**配置参数（ContextConfig）：**
 
-**触发条件一：容量阈值** ❌ 未实现
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enable_compression` | bool | true | 全局开关 |
+| `compress_threshold_ratio` | float | 0.8 | token 使用率超此阈值触发 |
+| `compress_preserve_pairs` | int | 3 | 压缩时完整保留的最近消息对数 |
+| `compress_preserve_recent_tokens` | int | 动态预算 | 尾轮保留的 token 预算上限 |
+| `compress_reserved_tokens` | int | 20000 | 压缩预留 buffer |
+| `compress_max_summary_tokens` | int | 512 | 摘要消息预留的 token 预算 |
+| `compress_model` | str | None | 摘要专用模型，None 时复用会话模型 |
+| `compress_tool_output_max_chars` | int | 2000 | Pruning 阶段工具输出最大字符数 |
+| `compress_protected_tools` | list[str] | ["skill"] | 受保护的工具类型 |
+
+**摘要 prompt 结构**：
 ```
-当前 token 数 / max_tokens > trigger_threshold (默认 0.8)
-```
-
-**触发条件二：消息数量限制** ✅ 已实现
-```
-历史消息数 > max_messages
-```
-**实现参考**: `laffybot/context/builder.py:_exceeds_message_limit`
-
-**触发条件三：冗余检测**（可选）
-- 连续多轮相似问题
-- 重复的查询操作
-- 可合并的状态更新
-
-#### 压缩执行流程 ❌ 未实现（当前仅实现简单截断）
-
-```
-1. 检查触发条件 ✅（简单截断已实现）
-   ├─ 若未触发，返回原始消息列表 ✅
-   └─ 若触发，进入压缩流程 ✅（简单截断）
-
-2. 分类消息 ❌（未实现，当前直接按顺序截断）
-   ├─ 识别高优先级消息（工具调用、错误、决策）❌
-   ├─ 识别低优先级消息（闲聊、重复）❌
-   └─ 标记最近 N 条消息为保留 ❌
-
-3. 计算压缩目标 ❌
-   ├─ 目标 token 数 = 当前 token 数 × compression_ratio ❌
-   └─ 确保保留消息数 >= min_preserve_pairs × 2 ✅
-
-4. 执行压缩 ✅（简单截断）
-   ├─ 完整保留：高优先级 + 最近 N 条 ❌
-   ├─ 摘要压缩：中间历史消息 ❌
-   └─ 完全移除：低优先级 + 最旧消息 ✅（当前实现）
-
-5. 验证压缩结果 ✅
-   ├─ 检查 token 数是否满足目标 ✅
-   ├─ 检查保留消息数是否满足最小要求 ✅
-   └─ 返回压缩后的消息列表 ✅
+Goal: <原始目标>
+Constraints & Preferences: <约束和偏好>
+Progress: <已完成 / 进行中 / 阻塞>
+Key Decisions: <关键决策>
+Next Steps: <下一步计划>
+Critical Context: <关键上下文信息>
+Relevant Files: <相关文件列表>
 ```
 
-#### 压缩效果评估
+**存储层扩展**：
+- `get_messages_by_ids(session_id, message_ids)` → 返回指定 ID 的消息列表
+- `replace_compressed_region(session_id, message_ids, summary_text)` → 单事务原子替换
+- 摘要消息 role="assistant"，metadata 包含 `{"is_summary": true, "summarized_count": N}`
+- 摘要消息不计入 `user_message_count`
 
-**评估指标：**
-- Token 压缩率：`(原始 token - 压缩后 token) / 原始 token`
-- 信息保留度：关键信息是否完整保留
-- 对话连贯性：最近对话是否完整
-
-**评估方式：**
-- 单元测试验证压缩逻辑
-- 集成测试验证对话质量
-- 用户反馈评估实际效果
-
-> **设计约束**：本项目不支持多模态内容（图片、音频等），上下文仅处理纯文本消息。
-
-> **设计约束**：除非明确要求，不实现任何降级策略。上下文构建失败时直接抛出异常，由上层（SessionManager）统一处理错误。
-
-> **范围说明**：本计划不包含可观测性增强（如上下文构建日志、调试导出等），该部分属于运维监控范畴。
+**错误处理**：
+- 所有压缩错误路径均不抛出异常
+- 压缩失败时当前轮消息可能超出上下文窗口——由 Provider 返回的错误在上层统一转换
 
 ## 与 SessionManager 协作
 
@@ -509,12 +449,16 @@ SessionManager.send_message()
 - 支持动态变量注入 ✅
 - 支持多来源加载策略 ⚠️（仅支持静态配置，动态加载未实现）
 
-**阶段 4：智能历史压缩** ❌ 未实现
-- 实现语义摘要压缩策略 ❌
-- 实现关键信息提取与保留 ❌
-- 实现分层压缩（完整保留 / 摘要 / 移除）❌
+**阶段 4：智能历史压缩** ✅ 已实现
+- 实现工具输出裁剪（ToolOutputPruner）✅
+- 实现压缩检测（CompressionDetector）✅
+- 实现 LLM 摘要压缩（LLMSummarizer）✅
+- 存储层扩展（get_messages_by_ids, replace_compressed_region）✅
+- SessionManager 并发摘要任务 ✅
 
 **迁移策略：** ✅ 已采用
 - 全面迁移：直接替换现有实现，不保持向后兼容 ✅
 - 渐进式迁移：先提取，后增强 ✅
 - 配置驱动：通过配置切换不同的 ContextBuilder 实现 ✅（支持依赖注入）
+
+Implementation record: see `docs/archive/context-compression-2026-05-16.md`

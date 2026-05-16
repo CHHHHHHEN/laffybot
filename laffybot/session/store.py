@@ -145,6 +145,23 @@ class SessionStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def get_messages_by_ids(
+        self,
+        session_id: str,
+        message_ids: list[int],
+    ) -> list[SessionMessage]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def replace_compressed_region(
+        self,
+        session_id: str,
+        message_ids: list[int],
+        summary_text: str,
+    ) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
     async def get_message_count(self, session_id: str) -> int:
         raise NotImplementedError
 
@@ -240,6 +257,7 @@ class SQLiteStore(SessionStore):
     @staticmethod
     def _row_to_message(row: aiosqlite.Row) -> SessionMessage:
         message: SessionMessage = {
+            "id": row["id"],
             "role": validate_role(row["role"]),
             "content": row["content"],
             "timestamp": row["timestamp"],
@@ -493,7 +511,7 @@ class SQLiteStore(SessionStore):
             clauses.append("timestamp < ?")
             params.append(self._format_dt(before))
         query = (
-            "SELECT role, content, timestamp, metadata, input_tokens, output_tokens FROM messages "
+            "SELECT id, role, content, timestamp, metadata, input_tokens, output_tokens FROM messages "
             f"WHERE {' AND '.join(clauses)} ORDER BY timestamp ASC, id ASC LIMIT ?"
         )
         async with db.execute(query, [*params, limit]) as cursor:
@@ -502,6 +520,87 @@ class SQLiteStore(SessionStore):
             # Verify session exists
             await self.get_session(session_id)
         return [self._row_to_message(row) for row in rows]
+
+    async def get_messages_by_ids(
+        self,
+        session_id: str,
+        message_ids: list[int],
+    ) -> list[SessionMessage]:
+        db = await self._ensure_db()
+        placeholders = ", ".join("?" for _ in message_ids)
+        query = (
+            "SELECT id, role, content, timestamp, metadata, input_tokens, output_tokens "
+            "FROM messages WHERE session_id = ? AND id IN ({}) ORDER BY timestamp ASC, id ASC"
+        ).format(placeholders)
+        async with db.execute(query, [session_id, *message_ids]) as cursor:
+            rows = await cursor.fetchall()
+        return [self._row_to_message(row) for row in rows]
+
+    async def replace_compressed_region(
+        self,
+        session_id: str,
+        message_ids: list[int],
+        summary_text: str,
+    ) -> bool:
+        db = await self._ensure_db()
+        placeholders = ", ".join("?" for _ in message_ids)
+        try:
+            # Find the latest timestamp among compressed messages
+            async with db.execute(
+                "SELECT MAX(timestamp) AS max_ts FROM messages WHERE id IN ({})".format(
+                    placeholders
+                ),
+                message_ids,
+            ) as cursor:
+                row = await cursor.fetchone()
+            latest_ts = (
+                row["max_ts"] if row and row["max_ts"] else self._format_dt(self._now())
+            )
+
+            await db.execute("BEGIN")
+            # Delete compressed messages
+            await db.execute(
+                "DELETE FROM messages WHERE session_id = ? AND id IN ({})".format(
+                    placeholders
+                ),
+                [session_id, *message_ids],
+            )
+            deleted_count = len(message_ids)
+            # Insert summary message
+            metadata = json.dumps(
+                {"is_summary": True, "summarized_count": deleted_count},
+                ensure_ascii=False,
+            )
+            await db.execute(
+                """INSERT INTO messages
+                   (session_id, role, content, timestamp, metadata)
+                   VALUES (?, 'assistant', ?, ?, ?)""",
+                (session_id, summary_text, latest_ts, metadata),
+            )
+            # Update session message count (net: delete N, insert 1 → -N+1)
+            delta = -deleted_count + 1
+            await db.execute(
+                """UPDATE sessions
+                   SET message_count = message_count + ?, updated_at = ?
+                   WHERE session_id = ?""",
+                (delta, self._format_dt(self._now()), session_id),
+            )
+            await db.commit()
+            logger.debug(
+                "Compressed region replaced: session_id={}, deleted={}, inserted=1, delta={}",
+                session_id,
+                deleted_count,
+                delta,
+            )
+            return True
+        except Exception:
+            await db.rollback()
+            logger.warning(
+                "Failed to replace compressed region: session_id={}",
+                session_id,
+                exc_info=True,
+            )
+            return False
 
     async def get_message_count(self, session_id: str) -> int:
         session = await self.get_session(session_id)

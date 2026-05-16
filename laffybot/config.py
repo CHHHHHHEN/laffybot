@@ -22,11 +22,6 @@ class ContextConfig(BaseModel):
         default=None,
         description="Maximum number of historical messages to include. None means no limit.",
     )
-    min_preserve_pairs: int = Field(
-        default=3,
-        ge=1,
-        description="Minimum number of user-assistant message pairs to preserve when truncating.",
-    )
 
     system_prompt: str = Field(
         default="You are a helpful assistant.",
@@ -53,6 +48,49 @@ You are a helpful assistant.""",
     use_exact_token_count: bool = Field(
         default=True,
         description="Prefer exact token counts from LLM usage when available.",
+    )
+
+    enable_compression: bool = Field(
+        default=True,
+        description="Global switch for context compression. Default enabled.",
+    )
+    compress_threshold_ratio: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Token usage ratio threshold to trigger compression.",
+    )
+    compress_preserve_pairs: int = Field(
+        default=3,
+        ge=1,
+        description="Number of recent user-assistant message pairs to preserve intact during compression.",
+    )
+    compress_preserve_recent_tokens: int | None = Field(
+        default=None,
+        description="Token budget for the recent preserved tail. None means dynamic from max_tokens.",
+    )
+    compress_reserved_tokens: int = Field(
+        default=20000,
+        ge=0,
+        description="Reserved token buffer to prevent compression from triggering overflow.",
+    )
+    compress_max_summary_tokens: int = Field(
+        default=512,
+        ge=1,
+        description="Token budget reserved for the summary message.",
+    )
+    compress_model: str | None = Field(
+        default=None,
+        description="Dedicated model for summary generation. None reuses the session model.",
+    )
+    compress_tool_output_max_chars: int = Field(
+        default=2000,
+        ge=0,
+        description="Maximum characters for tool output before pruning. 0 disables pruning.",
+    )
+    compress_protected_tools: list[str] = Field(
+        default=["skill"],
+        description="Tool types whose outputs are protected from pruning.",
     )
 
 
