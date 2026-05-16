@@ -23,7 +23,7 @@
 | 证据优先级（用户消息 > 工具输出 > Assistant 动作） | 完整采纳 | 指导提取时的信息权重 |
 | 使用频率 + 最近性排序 | 完整采纳 | Phase 2 选择算法直接沿用 |
 | 遗忘窗口（max_unused_days） | 完整采纳 | 低频/过时记忆自动淘汰 |
-| 记忆文件分类存储 | 完整采纳 | 按摘要/索引/原始分层存储 |
+| 记忆分类存储 | 完整采纳 | 按 tags 字段分类，数据库单表存储（替代 Codex 的文件分层方案） |
 | 使用反馈回路 | 采纳，推迟到 Phase 3 | 先在内存中跟踪，后续持久化 |
 
 ### 适配的设计
@@ -37,7 +37,7 @@
 | 开发指令注入（memory_summary 自动注入） | 通过 ContextBuilder 的系统提示模板变量注入 |
 | 渐进式披露 | 分两步实现：Phase 2 全量注入摘要，Phase 3 优化为按需搜索 |
 | 租约机制 | 无需租约。单实例串行处理无需分布式锁 |
-| 内存模式状态机 | 简化：`enabled` 字段仅作信息记录，运行时的启用由提取模型是否已配置决定 | polluted 后续按需引入 |
+| 内存模式状态机 | 简化：`enabled` 字段仅作信息记录，运行时的启用由提取模型是否已配置决定；后续可按需引入完整状态管理 |
 
 ### 暂不实现
 
@@ -198,7 +198,7 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ### ContextBuilder
 
-- 新增系统提示模板变量 `{{ memories }}`。`SystemPromptTemplate.render()` 已支持 `**extra_vars`，ContextBuilder 在 `build_messages()` 时传入即可
+- 新增系统提示模板变量 `{{ memories }}`。`SystemPromptTemplate.render()` 已支持 `**extra_vars`，但 `ContextBuilder.build_messages()` 当前不接收 `extra_vars`；Phase 2 需扩展其接口以透传记忆数据到模板渲染
 - 容量控制为记忆预留 Token 预算：优先保证系统提示和历史消息，记忆部分可被截断
 
 ### SessionManager
@@ -214,7 +214,7 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `enabled` | 信息性标记，实际启用由提取模型是否已配置决定 | `False` |
-| `extract_model` | 提取模型默认值 | 可选，可在 config.yaml 中设置。未配置时从 UI 获取，两者都未配置时静默跳过提取 |
+| `extract_model` | 提取模型默认值 | 仅由 UI 设置（AppSettingStore），`MemoryConfig` 中该字段当前不参与运行时提取判断；提取流程通过 `get_extract_model()` 读取 UI 配置，未配置时静默跳过 |
 | `max_session_summaries` | 最大记忆数 | `50` |
 | `max_unused_days` | 遗忘窗口 | `30` |
 | `top_n_for_injection` | 注入时选 N 条 | `5` |
