@@ -11,7 +11,7 @@ from loguru import logger
 from laffybot.api.app import app
 from laffybot.config import ApiConfig
 from laffybot.crypto import validate_encryption_key
-from laffybot.logging import configure_logging
+from laffybot.log_config import configure_logging
 
 
 def main() -> None:

@@ -4,11 +4,12 @@ const tabs = [
   { to: '/settings/provider', label: '提供商配置' },
   { to: '/settings/tools', label: '工具管理' },
   { to: '/settings/advanced', label: '高级设置' },
+  { to: '/settings/memories', label: '记忆管理' },
 ]
 
 export function SettingsPage() {
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="px-6 h-14 flex items-center border-b border-[var(--color-border)]">
         <h2 className="text-h2 font-semibold text-[var(--color-text-primary)]">设置</h2>
       </div>

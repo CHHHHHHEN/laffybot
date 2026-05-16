@@ -18,6 +18,7 @@ from laffybot.agent.heartbeat import HeartbeatManager
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
     get_app_setting_store,
+    get_memory_store,
     get_provider_store,
     get_session_manager,
     get_store,
@@ -27,6 +28,9 @@ from laffybot.api.event_bus import GlobalEvent, get_event_bus
 from laffybot.api.schemas import (
     HealthResponse,
     HistoryResponse,
+    MemoryListResponse,
+    MemoryResponse,
+    MemorySourceResponse,
     MessageCreateRequest,
     ModelCreateRequest,
     ModelResponse,
@@ -46,6 +50,7 @@ from laffybot.api.schemas import (
     SessionTitleUpdateRequest,
     TestResultResponse,
 )
+from laffybot.memory import MemoryNotFoundError, MemoryStore
 from laffybot.providers.errors import (
     ModelNotFoundError,
     ProviderConnectionError,
@@ -485,6 +490,104 @@ async def delete_summary_model(
 ) -> dict[str, str]:
     await app_setting_store.delete_summary_model()
     return {"status": "cleared"}
+
+
+# ─── Extract-Model Settings ─────────────────────────────────────────────────────
+
+
+@router.get("/settings/extract-model")
+async def get_extract_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str] | None:
+    config = await app_setting_store.get_extract_model()
+    if config is None:
+        return None
+    return {"provider_id": config.provider_id, "model_name": config.model_name}
+
+
+@router.put("/settings/extract-model")
+async def set_extract_model(
+    payload: SessionModelUpdateRequest,
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+    provider_store: ProviderStore = Depends(get_provider_store),
+) -> dict[str, str]:
+    await provider_store.get_provider(payload.provider_id)
+    models = await provider_store.list_models(payload.provider_id)
+    if not any(m.name == payload.model_name for m in models):
+        raise ModelNotFoundError(payload.model_name)
+    await app_setting_store.set_extract_model(payload.provider_id, payload.model_name)
+    return {"provider_id": payload.provider_id, "model_name": payload.model_name}
+
+
+@router.delete("/settings/extract-model")
+async def delete_extract_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str]:
+    await app_setting_store.delete_extract_model()
+    return {"status": "cleared"}
+
+
+# ─── Memory Routes ──────────────────────────────────────────────────────────────
+
+
+@router.get("/memories", response_model=MemoryListResponse)
+async def list_memories(
+    limit: int = 20,
+    offset: int = 0,
+    search: str | None = None,
+    store: MemoryStore = Depends(get_memory_store),
+) -> dict[str, object]:
+    memories, total = await store.list_memories(
+        limit=limit, offset=offset, search=search
+    )
+    return {
+        "memories": memories,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/memories/{memory_id}", response_model=MemoryResponse)
+async def get_memory(
+    memory_id: str,
+    store: MemoryStore = Depends(get_memory_store),
+) -> dict[str, object]:
+    memory = await store.get_memory(memory_id)
+    if memory is None:
+        raise MemoryNotFoundError(memory_id)
+    return memory
+
+
+@router.get("/memories/{memory_id}/source", response_model=MemorySourceResponse)
+async def get_memory_source(
+    memory_id: str,
+    store: MemoryStore = Depends(get_memory_store),
+    session_store: SessionStore = Depends(get_store),
+) -> dict[str, object]:
+    memory = await store.get_memory(memory_id)
+    if memory is None:
+        raise MemoryNotFoundError(memory_id)
+    session_id = memory["session_id"]
+    try:
+        session = await session_store.get_session(session_id)
+    except SessionNotFoundError:
+        session = None
+    messages = await session_store.get_messages(session_id, limit=1000)
+    return {
+        "session_id": session_id,
+        "session_title": session.title if session else None,
+        "messages": [_serialize_message(m) for m in messages],
+    }
+
+
+@router.delete("/memories/{memory_id}")
+async def delete_memory(
+    memory_id: str,
+    store: MemoryStore = Depends(get_memory_store),
+) -> dict[str, str]:
+    await store.delete_memory(memory_id)
+    return {"status": "deleted", "memory_id": memory_id}
 
 
 # ─── Health Routes ─────────────────────────────────────────────────────────────

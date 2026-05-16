@@ -129,3 +129,32 @@ export function useClearSummaryModel() {
   })
 }
 
+export function useExtractModel() {
+  return useQuery({
+    queryKey: ['extractModel'],
+    queryFn: () => api.getExtractModel(),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetExtractModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { provider_id: string; model_name: string }) =>
+      api.setExtractModel(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['extractModel'] })
+    },
+  })
+}
+
+export function useClearExtractModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.clearExtractModel(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['extractModel'] })
+    },
+  })
+}
+

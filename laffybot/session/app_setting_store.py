@@ -55,6 +55,18 @@ class AppSettingStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def get_extract_model(self) -> ProviderModelPair | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def set_extract_model(self, provider_id: str, model_name: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def delete_extract_model(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     async def close(self) -> None:
         raise NotImplementedError
 
@@ -131,6 +143,15 @@ class SQLiteAppSettingStore(AppSettingStore):
 
     async def delete_summary_model(self) -> None:
         await self._delete("summary_model")
+
+    async def get_extract_model(self) -> ProviderModelPair | None:
+        return await self._get("extract_model")
+
+    async def set_extract_model(self, provider_id: str, model_name: str) -> None:
+        await self._set("extract_model", provider_id, model_name)
+
+    async def delete_extract_model(self) -> None:
+        await self._delete("extract_model")
 
     async def close(self) -> None:
         if self._db is not None:

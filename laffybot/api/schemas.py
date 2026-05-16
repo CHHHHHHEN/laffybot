@@ -154,3 +154,28 @@ class TestResultResponse(BaseModel):
     success: bool
     message: str
     latency_ms: int | None = None
+
+
+class MemoryResponse(BaseModel):
+    memory_id: str
+    session_id: str
+    content: str
+    tags: list[str]
+    created_at: str
+    updated_at: str
+    session_title: str | None = None
+    usage_count: int = 0
+    last_usage: str | None = None
+
+
+class MemoryListResponse(BaseModel):
+    memories: list[MemoryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class MemorySourceResponse(BaseModel):
+    session_id: str
+    session_title: str | None
+    messages: list[MessageResponse]

@@ -241,6 +241,8 @@ class SessionManager:
                         # Trigger auto-title generation asynchronously
                         if response_status == "idle" and assistant_chunks:
                             asyncio.create_task(self._trigger_auto_title(session_id))
+                            # Trigger memory extraction asynchronously
+                            asyncio.create_task(self._trigger_extract(session_id))
                         break
             except ProviderNotFoundError as exc:
                 log.error("Provider not found: {}", exc)
@@ -457,6 +459,43 @@ class SessionManager:
         except Exception as e:
             logger.warning(
                 "Auto-title generation failed: session_id={}, error={}",
+                session_id,
+                str(e),
+            )
+
+    async def _trigger_extract(self, session_id: str) -> None:
+        """Trigger asynchronous memory extraction for a completed session."""
+        if self.memory_manager is None:
+            return
+
+        try:
+            messages = await self.store.get_messages(session_id, limit=1000)
+
+            # Get extract model from app settings
+            extract_config = await self.app_setting_store.get_extract_model()
+
+            if extract_config is None:
+                logger.debug(
+                    "Memory extraction skipped (no extract model): session_id={}",
+                    session_id,
+                )
+                return
+
+            provider_config = await self.provider_store.get_provider_config(
+                extract_config.provider_id
+            )
+            provider = OpenAIProvider(provider_config)
+
+            await self.memory_manager.extract(
+                session_id=session_id,
+                messages=messages,
+                provider=provider,
+                model=extract_config.model_name,
+            )
+
+        except Exception as e:
+            logger.warning(
+                "Memory extraction failed: session_id={}, error={}",
                 session_id,
                 str(e),
             )

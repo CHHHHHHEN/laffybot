@@ -25,6 +25,7 @@ from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
     build_app_setting_store,
     build_memory_manager,
+    build_memory_store,
     build_provider_store,
     build_session_manager,
     build_store,
@@ -32,7 +33,7 @@ from laffybot.api.dependencies import (
 from laffybot.api.errors import error_response, map_provider_error, map_session_error
 from laffybot.api.routes import router
 from laffybot.config import ApiConfig, ContextConfig
-from laffybot.memory import MemoryConfig, MemoryManager
+from laffybot.memory import MemoryConfig, MemoryManager, MemoryNotFoundError
 from laffybot.providers.errors import ProviderError
 from laffybot.session.errors import SessionError
 from laffybot.session.provider_store import ProviderStore
@@ -53,7 +54,10 @@ def create_app(
     provider_store_obj = provider_store or build_provider_store(config)
     app_setting_store_obj = build_app_setting_store(config)
     tool_registry_obj = tool_registry or ToolRegistry()
-    memory_manager_obj = memory_manager or build_memory_manager(memory_config)
+    memory_store_obj = build_memory_store(config)
+    memory_manager_obj = memory_manager or build_memory_manager(
+        memory_config, store=memory_store_obj
+    )
     tool_registry_obj.register(ReadFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(WriteFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(EditFileTool(workspace=Path.cwd()))
@@ -64,6 +68,7 @@ def create_app(
         app_setting_store=app_setting_store_obj,
         tool_registry=tool_registry_obj,
         context_config=context_config,
+        memory_manager=memory_manager_obj,
     )
 
     @asynccontextmanager
@@ -99,6 +104,7 @@ def create_app(
     app.state.tool_registry = tool_registry_obj
     app.state.session_manager = session_manager_obj
     app.state.memory_manager = memory_manager_obj
+    app.state.memory_store = memory_store_obj
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
@@ -127,6 +133,12 @@ def create_app(
             str(exc),
             {"tool_name": exc.tool_name} if exc.tool_name else None,
         )
+
+    @app.exception_handler(MemoryNotFoundError)
+    async def memory_not_found_handler(
+        _: Request, exc: MemoryNotFoundError
+    ) -> JSONResponse:
+        return error_response(404, "MEMORY_NOT_FOUND", str(exc))
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(_: Request, exc: Exception) -> JSONResponse:

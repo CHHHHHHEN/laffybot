@@ -1,6 +1,6 @@
 # 记忆系统实现路线
 
-> **实现状态**：Phase 0 已完成
+> **实现状态**：Phase 0 ✅ 已完成，Phase 1 ✅ 已完成
 > **最后更新**：2026-05-16
 >
 > **文档范围说明**：本文档规划将 Codex 两阶段记忆管道选择性迁移到 Laffybot 的实现路线。阅读前请先了解 `docs/third-party/codex/codex-memory-system-design.md`。
@@ -37,7 +37,7 @@
 | 开发指令注入（memory_summary 自动注入） | 通过 ContextBuilder 的系统提示模板变量注入 |
 | 渐进式披露 | 分两步实现：Phase 2 全量注入摘要，Phase 3 优化为按需搜索 |
 | 租约机制 | 无需租约。单实例串行处理无需分布式锁 |
-| 内存模式状态机 | 简化：先实现 enabled/disabled，polluted 后续按需引入 |
+| 内存模式状态机 | 简化：`enabled` 字段仅作信息记录，运行时的启用由提取模型是否已配置决定 | polluted 后续按需引入 |
 
 ### 暂不实现
 
@@ -53,7 +53,7 @@
 ## 架构概览
 
 ```
-Session 完成 ──► Phase 1 提取 ──► 记忆文件
+Session 完成 ──► Phase 1 提取 ──► 数据库 (memories 表)
                                       │
 新 Session 启动 ──► Phase 2 整合 ──► 选中 Top-N ──► 注入系统提示 ──► Agent 执行
                                       │
@@ -62,38 +62,32 @@ Session 完成 ──► Phase 1 提取 ──► 记忆文件
 
 **数据流**：
 
-1. Session 正常完成后，异步触发 Phase 1：将 Session 消息历史提取为结构化记忆，写入文件
+1. Session 正常完成后，异步触发 Phase 1：将 Session 消息历史提取为结构化记忆，写入 `memories` 数据库表
 2. 新 Session 启动时，触发 Phase 2：从已有记忆中选择 Top-N，生成紧凑摘要，通过 ContextBuilder 注入系统提示
 3. Agent 执行后，记忆引用信息回写排序指标（Phase 3）
 
 **状态与错误路径**：
 
 - 提取失败（LLM 调用失败、存储写入失败）：记录日志，不阻塞 Session 流程
-- 记忆文件损坏：跳过该文件，不影响其他记忆
 - Phase 2 无可用记忆：空注入，Session 正常执行
 - 存储容量满：按遗忘窗口淘汰最旧记忆，再写入新记忆
 
 ## 存储结构
 
 ```
-记忆根目录/
-├── INDEX.md                    # 记忆索引（Phase 2 生成，摘要级）
-├── session_summaries/          # 单 Session 记忆文件（Phase 1 产出）
-│   ├── <session_id>.md         # 含 YAML frontmatter（session_id, created_at, usage_count, last_usage）
-│   └── <session_id>.md
-└── phase2_output/              # Phase 2 产出（注入用工件）
-    ├── active_summary.md       # 当前选中的 Top-N 记忆紧凑摘要
-    └── metadata.json           # 全局元数据（排序指标、版本戳等）
+数据库 (SQLite)
+└── memories 表
+    ├── memory_id      TEXT PK (UUID)
+    ├── session_id     TEXT NOT NULL (FK → sessions)
+    ├── content        TEXT NOT NULL
+    ├── tags           TEXT (JSON 数组)
+    ├── created_at     TEXT (ISO 时间戳)
+    ├── updated_at     TEXT
+    ├── usage_count    INTEGER DEFAULT 0
+    └── last_usage     TEXT
 ```
 
-**存储层次职责**：
-
-| 文件/目录 | 职责 | 更新时机 |
-|----------|------|---------|
-| `session_summaries/<session_id>.md` | 单个 Session 的结构化记忆 | Phase 1 提取后 |
-| `INDEX.md` | 全部记忆的索引，按主题组织 | Phase 2 整合后 |
-| `active_summary.md` | 当前选中的 Top-N 记忆摘要 | Phase 2 整合后 |
-| `metadata.json` | usage_count、last_usage 等统计 | Phase 2 整合 + Phase 3 反馈更新 |
+> Phase 0 的文件系统存储已在 Phase 1 中废弃，所有记忆操作通过 `MemoryStore` 数据库层完成。
 
 ## 实现阶段
 
@@ -109,16 +103,15 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ### Phase 0：存储基础 ✅ 已实现
 
-**目标**：建立记忆系统所需的存储层、配置项和组件壳。
+**目标**：建立记忆系统所需的配置项和数据库层骨架。
 
 **任务**：
 
-- 定义记忆目录布局，创建基础目录结构
-- 增加记忆系统相关配置项（总开关、最大记忆数、遗忘天数等）
+- 定义记忆系统配置模型 `MemoryConfig`
+- 增加记忆系统相关配置项（提取模型默认值、最大记忆数、遗忘天数等）
 - 新增 `laffybot/memory/` 组件包，定义模块边界
 
 **完成后产出**：
-- 记忆目录可创建
 - 配置项可读写
 - 模块骨架可通过依赖注入挂载到 SessionManager
 
@@ -126,9 +119,9 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ---
 
-### Phase 1：记忆提取
+### Phase 1：记忆提取 ✅ 已实现
 
-**目标**：从已完成 Session 中提取结构化记忆，写入存储。
+**目标**：从已完成 Session 中提取结构化记忆，持久化到数据库。
 
 **提取触发时机**：Session 正常完成后（`send_message` 的 `done` 事件后），以 `asyncio.create_task` 异步触发，不阻塞后续请求。此模式与现有 Auto-Title 触发机制一致。
 
@@ -136,17 +129,19 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 - 检查 Session 是否满足提取条件（消息数足够、未被提取过）
 - 整理 Session 消息历史（保留 user/assistant/tool 消息）
-- 调用 LLM 提取结构化记忆，核心方向为“可复用的跨会话知识”（用户偏好、项目约定、工具使用模式）
+- 调用 LLM 提取结构化记忆，核心方向为"可复用的跨会话知识"（用户偏好、项目约定、工具使用模式）
 - 应用 No-Op 门控：若记忆对未来 Agent 表现无改善，则丢弃
-- 通过后写入记忆文件（含元数据 frontmatter）
+- 通过后写入 `memories` 数据库表
 
 **不应触发提取的场景**：
-- 记忆功能被禁用
-- Session 消息数过少
+- 提取模型未配置（既不在 config.yaml 中也不在 UI 中）
+- Session 消息数过少（无完整 user/assistant 对话轮次）
 
 **完成后产出**：
-- 完成后的 Session 由异步任务生成 `.md` 记忆文件
-- 记忆文件内嵌 YAML frontmatter 记录元数据（session_id、创建时间、初始用法计数等）
+- 完成后的 Session 由异步任务提取记忆并写入 `memories` 数据库表
+- 记忆记录含 session_id、content、tags、创建时间、使用计数等字段
+- 提取模型独立于总结模型，通过 UI 配置
+- 前端提供记忆管理页面（列表/详情/来源追溯/删除）
 
 **依赖**：Phase 0
 
@@ -165,13 +160,14 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 - 生成紧凑摘要注入系统提示
 - 控制记忆部分的 Token 预算，不影响核心提示和历史
 
-**记忆查询接口**（Phase 2 阶段先实现搜索入口）：
+**记忆查询接口**（Phase 1 已实现）：
 
-| 操作 | 说明 |
-|------|------|
-| 搜索 | 全目录关键字搜索，返回匹配文件路径及上下文片段 |
-
-读取和列表操作在前端可通过搜索的扩展参数实现，不单独暴露端点。后续根据使用情况决定是否拆分。
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/memories` | 列出记忆（支持分页、搜索） |
+| GET | `/api/v1/memories/{id}` | 单条记忆详情，包含来源 Session 标题等信息 |
+| GET | `/api/v1/memories/{id}/source` | 获取该记忆所来源 Session 的消息历史 |
+| DELETE | `/api/v1/memories/{id}` | 删除单条记忆 |
 
 **完成后产出**：
 - 新建 Session 的上下文中包含先前会话的记忆摘要
@@ -217,8 +213,8 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| `enabled` | 总开关 | `False` |
-| `extract_model` | 提取用模型 | 与 summary_model 共用 |
+| `enabled` | 信息性标记，实际启用由提取模型是否已配置决定 | `False` |
+| `extract_model` | 提取模型默认值 | 可选，可在 config.yaml 中设置。未配置时从 UI 获取，两者都未配置时静默跳过提取 |
 | `max_session_summaries` | 最大记忆数 | `50` |
 | `max_unused_days` | 遗忘窗口 | `30` |
 | `top_n_for_injection` | 注入时选 N 条 | `5` |
@@ -228,22 +224,23 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 | 场景 | 行为 |
 |------|------|
-| Phase 1 LLM 调用失败 | 记录日志，标记该 Session 为"提取失败"，下次可选重试 |
-| 记忆文件写入失败（磁盘满等） | 记录日志，不阻塞 Session 流程 |
-| 记忆文件读取损坏 | 跳过该文件，不影响其他记忆加载 |
+| 提取模型未配置（config.yaml 和 UI 均未设置） | `_trigger_extract` 记录 debug 日志后静默跳过，不调用 LLM |
+| LLM 调用失败（网络超时、模型不可用） | 记录 warning 日志后静默退出，不重试（同 auto-title 模式）；Session 正常流程不受影响 |
+| 记忆数据库写入失败（磁盘满等） | 记录日志，不阻塞 Session 流程 |
+| 提取结果被 No-Op 门控丢弃 | 记录 debug 日志，不写入数据库 |
 | Phase 2 无可用记忆 | 空注入，Session 正常执行 |
 | 同时触发多个提取（多个 Session 同时完成） | 每个提取独立串行执行，不加锁；Phase 2 读取时忽略未完成的提取 |
-| 存储达到 `max_session_summaries` | 写入前按遗忘窗口淘汰最旧未被选中的记忆 |
+| Session 已被提取过 | 查询 `memories` 表中该 session_id 的记录，已存在则跳过 |
 
 ## 设计决策
 
 | 决策点 | 选择 | 替代方案 | 理由 |
 |--------|------|---------|------|
 | 提取时机 | Session 完成后异步触发 | 定时任务、启动时扫描 | 时机明确，与现有 Auto-Title 模式一致 |
-| 存储介质 | 文件系统 + JSON 元数据 | 纯 SQLite、纯文件 | 文件可读性强，元数据 JSON 便于更新 |
+| 存储介质 | 数据库（SQLite `memories` 表） | 文件系统、纯 SQLite | 与 session/message 同库，简化备份和运维；外键约束保证数据完整性 |
 | 注入方式 | 系统提示模板变量 | 消息前缀、Tool 注入 | 改动最小（仅需新增 extra_var），不增加消息数 |
 | 选择算法 | usage_count + last_usage | 向量相似度 | 无需外部依赖，实现简单 |
-| 提取模型 | 可配置，默认与 summary_model 共用 | 固定模型 | 灵活性高，用户可自行调整 |
+| 提取模型 | 可配置，**独立于 summary_model** | 与 summary_model 共用 | 提取任务需较强指令遵循能力，独立配置更灵活 |
+| 运行时启用 | 隐式：提取模型已配置即表示启用 | config.yaml `enabled` 显式开关 | 用户配置提取模型后立即生效，无需重启 |
 | Phase 1 串行 | 一次处理一个 Session | 批量并行 | 会话量级低，串行更简单 |
 | Phase 2 查询接口 | 先实现搜索，后续按需拆分 | 立即实现 list/read/search 三个端点 | 减少 MVP 接口 surface |
-| 元数据存储 | 记忆文件内嵌 YAML frontmatter | 独立 metadata.json | 自包含，读写一致性好 |

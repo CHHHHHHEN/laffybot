@@ -411,6 +411,80 @@ export function clearSummaryModel() {
   })
 }
 
+/* ---- Extract Model APIs ---- */
+
+export interface ExtractModelResponse {
+  provider_id: string
+  model_name: string
+}
+
+export function getExtractModel() {
+  return apiRequest<ExtractModelResponse | null>('/api/v1/settings/extract-model')
+}
+
+export function setExtractModel(data: { provider_id: string; model_name: string }) {
+  return apiRequest<void>('/api/v1/settings/extract-model', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function clearExtractModel() {
+  return apiRequest<void>('/api/v1/settings/extract-model', {
+    method: 'DELETE',
+  })
+}
+
+/* ---- Memory APIs ---- */
+
+export interface MemoryResponse {
+  memory_id: string
+  session_id: string
+  content: string
+  tags: string[]
+  created_at: string
+  updated_at: string
+  session_title: string | null
+  usage_count: number
+  last_usage: string | null
+}
+
+export interface MemoryListResponse {
+  memories: MemoryResponse[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface MemorySourceResponse {
+  session_id: string
+  session_title: string | null
+  messages: HistoryMessage[]
+}
+
+export function listMemories(params?: { limit?: number; offset?: number; search?: string }) {
+  const query = new URLSearchParams()
+  if (params?.limit) query.set('limit', String(params.limit))
+  if (params?.offset) query.set('offset', String(params.offset))
+  if (params?.search) query.set('search', params.search)
+  const qs = query.toString()
+  return apiRequest<MemoryListResponse>(`/api/v1/memories${qs ? `?${qs}` : ''}`)
+}
+
+export function getMemory(memoryId: string) {
+  return apiRequest<MemoryResponse>(`/api/v1/memories/${memoryId}`)
+}
+
+export function getMemorySource(memoryId: string) {
+  return apiRequest<MemorySourceResponse>(`/api/v1/memories/${memoryId}/source`)
+}
+
+export function deleteMemory(memoryId: string) {
+  return apiRequest<{ status: string; memory_id: string }>(`/api/v1/memories/${memoryId}`, {
+    method: 'DELETE',
+  })
+}
+
 /* ---- Health API ---- */
 
 export function checkHealth() {

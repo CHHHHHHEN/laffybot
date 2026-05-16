@@ -21,3 +21,8 @@ config.json
 
 # Tauri (Rust build artifacts)
 ui/src-tauri/target/
+
+
+# ide files
+.github
+.opencode

@@ -1,60 +1,179 @@
 import { useState } from 'react'
-import { Settings2, Loader2, Check, X } from 'lucide-react'
-import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel } from '@/hooks/use-providers'
+import { Settings2, Loader2, Check, X, Brain } from 'lucide-react'
+import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel, useExtractModel, useSetExtractModel, useClearExtractModel } from '@/hooks/use-providers'
 import { Button } from '@/components/ui/Button'
 import { useToastStore } from '@/stores/toast-store'
 
-export function AdvancedSettingsPage() {
-  const { data: providers = [], isLoading: providersLoading } = useProviders()
-  const { data: currentConfig } = useSummaryModel()
-  const setSummaryModel = useSetSummaryModel()
-  const clearSummaryModel = useClearSummaryModel()
-
-  // Initialize with current config if available
-  const [selectedProviderId, setSelectedProviderId] = useState<string>(currentConfig?.provider_id ?? '')
-  const [selectedModelName, setSelectedModelName] = useState<string>(currentConfig?.model_name ?? '')
-  const [isSaving, setIsSaving] = useState(false)
-  const [isClearing, setIsClearing] = useState(false)
-
+function ProviderModelSelector({
+  currentConfig,
+  providers,
+  onSave,
+  onClear,
+  isSaving,
+  isClearing,
+}: {
+  currentConfig: { provider_id: string; model_name: string } | null | undefined
+  providers: { id: string; name: string }[]
+  onSave: (providerId: string, modelName: string) => Promise<void>
+  onClear: () => Promise<void>
+  isSaving: boolean
+  isClearing: boolean
+}) {
+  const [selectedProviderId, setSelectedProviderId] = useState(currentConfig?.provider_id ?? '')
+  const [selectedModelName, setSelectedModelName] = useState(currentConfig?.model_name ?? '')
   const { data: models = [], isLoading: modelsLoading } = useModels(selectedProviderId)
+
+  const handleProviderChange = (providerId: string) => {
+    setSelectedProviderId(providerId)
+    setSelectedModelName('')
+  }
 
   const handleSave = async () => {
     if (!selectedProviderId || !selectedModelName) {
       useToastStore.getState().addToast('error', '请选择提供商和模型')
       return
     }
+    await onSave(selectedProviderId, selectedModelName)
+  }
 
-    setIsSaving(true)
+  const handleClear = async () => {
+    await onClear()
+    setSelectedProviderId('')
+    setSelectedModelName('')
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+          提供商
+        </label>
+        <select
+          value={selectedProviderId}
+          onChange={(e) => handleProviderChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
+        >
+          <option value="">选择提供商...</option>
+          {providers.map((provider) => (
+            <option key={provider.id} value={provider.id}>
+              {provider.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
+          模型
+        </label>
+        <select
+          value={selectedModelName}
+          onChange={(e) => setSelectedModelName(e.target.value)}
+          disabled={!selectedProviderId || modelsLoading}
+          className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <option value="">
+            {modelsLoading ? '加载中...' : '选择模型...'}
+          </option>
+          {models.map((model) => (
+            <option key={model.id} value={model.name}>
+              {model.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || !selectedProviderId || !selectedModelName}
+        >
+          {isSaving ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Check size={14} />
+          )}
+          保存配置
+        </Button>
+        {currentConfig && (
+          <Button
+            variant="ghost"
+            onClick={handleClear}
+            disabled={isClearing}
+          >
+            {isClearing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <X size={14} />
+            )}
+            清除配置
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function AdvancedSettingsPage() {
+  const { data: providers = [], isLoading: providersLoading } = useProviders()
+  const { data: currentSummaryConfig } = useSummaryModel()
+  const { data: currentExtractConfig } = useExtractModel()
+  const setSummaryModel = useSetSummaryModel()
+  const clearSummaryModel = useClearSummaryModel()
+  const setExtractModel = useSetExtractModel()
+  const clearExtractModel = useClearExtractModel()
+
+  const [isSavingSummary, setIsSavingSummary] = useState(false)
+  const [isClearingSummary, setIsClearingSummary] = useState(false)
+  const [isSavingExtract, setIsSavingExtract] = useState(false)
+  const [isClearingExtract, setIsClearingExtract] = useState(false)
+
+  const handleSaveSummary = async (providerId: string, modelName: string) => {
+    setIsSavingSummary(true)
     try {
-      await setSummaryModel.mutateAsync({
-        provider_id: selectedProviderId,
-        model_name: selectedModelName,
-      })
+      await setSummaryModel.mutateAsync({ provider_id: providerId, model_name: modelName })
       useToastStore.getState().addToast('success', '总结模型配置已保存')
     } catch {
       useToastStore.getState().addToast('error', '保存失败，请稍后重试')
     } finally {
-      setIsSaving(false)
+      setIsSavingSummary(false)
     }
   }
 
-  const handleClear = async () => {
-    setIsClearing(true)
+  const handleClearSummary = async () => {
+    setIsClearingSummary(true)
     try {
       await clearSummaryModel.mutateAsync()
-      setSelectedProviderId('')
-      setSelectedModelName('')
       useToastStore.getState().addToast('success', '已清除总结模型配置')
     } catch {
       useToastStore.getState().addToast('error', '清除失败，请稍后重试')
     } finally {
-      setIsClearing(false)
+      setIsClearingSummary(false)
     }
   }
 
-  const handleProviderChange = (providerId: string) => {
-    setSelectedProviderId(providerId)
-    setSelectedModelName('') // Reset model when provider changes
+  const handleSaveExtract = async (providerId: string, modelName: string) => {
+    setIsSavingExtract(true)
+    try {
+      await setExtractModel.mutateAsync({ provider_id: providerId, model_name: modelName })
+      useToastStore.getState().addToast('success', '记忆提取模型配置已保存')
+    } catch {
+      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+    } finally {
+      setIsSavingExtract(false)
+    }
+  }
+
+  const handleClearExtract = async () => {
+    setIsClearingExtract(true)
+    try {
+      await clearExtractModel.mutateAsync()
+      useToastStore.getState().addToast('success', '已清除记忆提取模型配置')
+    } catch {
+      useToastStore.getState().addToast('error', '清除失败，请稍后重试')
+    } finally {
+      setIsClearingExtract(false)
+    }
   }
 
   if (providersLoading) {
@@ -67,6 +186,7 @@ export function AdvancedSettingsPage() {
 
   return (
     <div className="p-6 max-w-[720px]">
+      {/* Summary Model Section */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-lg bg-[var(--color-secondary-bg)] flex items-center justify-center">
           <Settings2 size={20} className="text-[var(--color-text-secondary)]" />
@@ -79,17 +199,17 @@ export function AdvancedSettingsPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-page-bg)] p-4 mb-4">
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-page-bg)] p-4 mb-8">
         <div className="text-sm text-[var(--color-text-secondary)] space-y-2 mb-4">
           <p>总结模型用于为新会话自动生成标题。建议选择轻量、低成本的模型（如 gpt-4o-mini、claude-3-haiku 等）。</p>
           <p>未配置时，系统将截取首条用户消息的前 50 个字符作为标题。</p>
         </div>
 
-        {currentConfig && (
+        {currentSummaryConfig && (
           <div className="mb-4 p-3 rounded bg-[var(--color-secondary-bg)] text-sm">
             <span className="text-[var(--color-text-secondary)]">当前配置：</span>
             <span className="font-mono text-[var(--color-text-primary)]">
-              {' '}{currentConfig.provider_id} / {currentConfig.model_name}
+              {' '}{currentSummaryConfig.provider_id} / {currentSummaryConfig.model_name}
             </span>
           </div>
         )}
@@ -99,74 +219,58 @@ export function AdvancedSettingsPage() {
             请先在「提供商配置」中添加提供商
           </div>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
-                提供商
-              </label>
-              <select
-                value={selectedProviderId}
-                onChange={(e) => handleProviderChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
-              >
-                <option value="">选择提供商...</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <ProviderModelSelector
+            currentConfig={currentSummaryConfig}
+            providers={providers}
+            onSave={handleSaveSummary}
+            onClear={handleClearSummary}
+            isSaving={isSavingSummary}
+            isClearing={isClearingSummary}
+          />
+        )}
+      </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">
-                模型
-              </label>
-              <select
-                value={selectedModelName}
-                onChange={(e) => setSelectedModelName(e.target.value)}
-                disabled={!selectedProviderId || modelsLoading}
-                className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">
-                  {modelsLoading ? '加载中...' : '选择模型...'}
-                </option>
-                {models.map((model) => (
-                  <option key={model.id} value={model.name}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {/* Extract Model Section */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-lg bg-[var(--color-secondary-bg)] flex items-center justify-center">
+          <Brain size={20} className="text-[var(--color-text-secondary)]" />
+        </div>
+        <div>
+          <h3 className="text-base font-medium text-[var(--color-text-primary)]">记忆提取模型</h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            用于从会话中提取结构化记忆的模型
+          </p>
+        </div>
+      </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={handleSave}
-                disabled={isSaving || !selectedProviderId || !selectedModelName}
-              >
-                {isSaving ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Check size={14} />
-                )}
-                保存配置
-              </Button>
-              {currentConfig && (
-                <Button
-                  variant="ghost"
-                  onClick={handleClear}
-                  disabled={isClearing}
-                >
-                  {isClearing ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <X size={14} />
-                  )}
-                  清除配置
-                </Button>
-              )}
-            </div>
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-page-bg)] p-4 mb-4">
+        <div className="text-sm text-[var(--color-text-secondary)] space-y-2 mb-4">
+          <p>记忆提取模型用于从完成的会话中提取可复用的跨会话知识（如用户偏好、项目约定、工具使用模式等）。</p>
+          <p>建议选择指令遵循能力较强的模型（如 gpt-4o、claude-3.5-sonnet 等）。</p>
+        </div>
+
+        {currentExtractConfig && (
+          <div className="mb-4 p-3 rounded bg-[var(--color-secondary-bg)] text-sm">
+            <span className="text-[var(--color-text-secondary)]">当前配置：</span>
+            <span className="font-mono text-[var(--color-text-primary)]">
+              {' '}{currentExtractConfig.provider_id} / {currentExtractConfig.model_name}
+            </span>
           </div>
+        )}
+
+        {providers.length === 0 ? (
+          <div className="text-center py-6 text-sm text-[var(--color-text-placeholder)]">
+            请先在「提供商配置」中添加提供商
+          </div>
+        ) : (
+          <ProviderModelSelector
+            currentConfig={currentExtractConfig}
+            providers={providers}
+            onSave={handleSaveExtract}
+            onClear={handleClearExtract}
+            isSaving={isSavingExtract}
+            isClearing={isClearingExtract}
+          />
         )}
       </div>
     </div>

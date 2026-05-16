@@ -14,11 +14,11 @@ class MemoryConfig(BaseModel):
 
     enabled: bool = Field(
         default=False,
-        description="Master switch for the memory system.",
+        description="Master switch for the memory system. Runtime extraction is enabled when an extract model is configured (via UI or config.yaml).",
     )
     extract_model: str | None = Field(
         default=None,
-        description="Model used for memory extraction. None means fallback to summary_model.",
+        description="Default model for memory extraction. Can be overridden via UI. Extraction silently skipped when not configured.",
     )
     max_session_summaries: int = Field(
         default=50,
