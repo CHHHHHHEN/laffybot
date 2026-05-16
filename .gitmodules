@@ -7,3 +7,6 @@
 [submodule "third-party/codex"]
 	path = third-party/codex
 	url = https://github.com/openai/codex
+[submodule "third-party/nanobot"]
+	path = third-party/nanobot
+	url = https://github.com/HKUDS/nanobot
