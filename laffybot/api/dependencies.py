@@ -6,6 +6,7 @@ from fastapi import Request
 
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ApiConfig, ContextConfig
+from laffybot.memory import MemoryConfig, MemoryManager
 from laffybot.session.app_setting_store import AppSettingStore, SQLiteAppSettingStore
 from laffybot.session.manager import SessionManager
 from laffybot.session.provider_store import ProviderStore, SQLiteProviderStore
@@ -30,6 +31,7 @@ def build_session_manager(
     app_setting_store: AppSettingStore,
     tool_registry: ToolRegistry,
     context_config: ContextConfig | None = None,
+    memory_manager: MemoryManager | None = None,
 ) -> SessionManager:
     return SessionManager(
         store=store,
@@ -37,6 +39,7 @@ def build_session_manager(
         app_setting_store=app_setting_store,
         tool_registry=tool_registry,
         context_config=context_config,
+        memory_manager=memory_manager,
     )
 
 
@@ -58,6 +61,14 @@ def get_app_setting_store(request: Request) -> AppSettingStore:
 
 def get_session_manager(request: Request) -> SessionManager:
     return request.app.state.session_manager  # type: ignore[no-any-return]
+
+
+def build_memory_manager(config: MemoryConfig | None = None) -> MemoryManager:
+    return MemoryManager(config or MemoryConfig())
+
+
+def get_memory_manager(request: Request) -> MemoryManager | None:
+    return request.app.state.memory_manager  # type: ignore[no-any-return]
 
 
 def get_tool_registry(request: Request) -> ToolRegistry:

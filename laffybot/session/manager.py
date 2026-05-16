@@ -16,6 +16,7 @@ from laffybot.agent.title_generator import TitleGenerator
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
 from laffybot.context import ContextBuilder, SimpleContextBuilder
+from laffybot.memory import MemoryManager
 from laffybot.providers.errors import ModelNotFoundError, ProviderNotFoundError
 from laffybot.providers.openai import OpenAIProvider
 from laffybot.session.app_setting_store import AppSettingStore
@@ -39,11 +40,13 @@ class SessionManager:
         tool_registry: ToolRegistry,
         context_config: ContextConfig | None = None,
         context_builder: ContextBuilder | None = None,
+        memory_manager: MemoryManager | None = None,
     ) -> None:
         self.store = store
         self.provider_store = provider_store
         self.app_setting_store = app_setting_store
         self.tool_registry = tool_registry
+        self.memory_manager = memory_manager
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
 
