@@ -158,3 +158,23 @@ export function useClearExtractModel() {
   })
 }
 
+/* ---- System Prompt Hooks ---- */
+
+export function useSystemPrompt() {
+  return useQuery({
+    queryKey: ['systemPrompt'],
+    queryFn: () => api.getSystemPrompt(),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetSystemPrompt() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (systemPrompt: string) => api.setSystemPrompt(systemPrompt),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['systemPrompt'] })
+    },
+  })
+}
+

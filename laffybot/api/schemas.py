@@ -19,7 +19,6 @@ class ErrorResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
-    system_prompt: str | None = None
     max_iterations: int = Field(default=10, ge=1)
     provider_id: str | None = None
     model_name: str | None = None
@@ -29,6 +28,10 @@ class SessionCreateRequest(BaseModel):
         if (self.provider_id is None) != (self.model_name is None):
             raise ValueError("provider_id and model_name must be provided together")
         return self
+
+
+class SystemPromptUpdateRequest(BaseModel):
+    system_prompt: str
 
 
 class MessageCreateRequest(BaseModel):

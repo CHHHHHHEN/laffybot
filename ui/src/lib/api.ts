@@ -36,7 +36,6 @@ export class ApiError extends Error {
 /* ---- Session APIs ---- */
 
 export interface CreateSessionRequest {
-  system_prompt?: string
   max_iterations?: number
   provider_id?: string
   model_name?: string
@@ -408,6 +407,23 @@ export function setSummaryModel(data: { provider_id: string; model_name: string 
 export function clearSummaryModel() {
   return apiRequest<void>('/api/v1/settings/summary-model', {
     method: 'DELETE',
+  })
+}
+
+/* ---- System Prompt APIs ---- */
+
+export interface SystemPromptResponse {
+  system_prompt: string
+}
+
+export function getSystemPrompt() {
+  return apiRequest<SystemPromptResponse>('/api/v1/settings/system-prompt')
+}
+
+export function setSystemPrompt(systemPrompt: string) {
+  return apiRequest<SystemPromptResponse>('/api/v1/settings/system-prompt', {
+    method: 'PUT',
+    body: JSON.stringify({ system_prompt: systemPrompt }),
   })
 }
 

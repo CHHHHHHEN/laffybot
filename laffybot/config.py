@@ -28,13 +28,23 @@ class ContextConfig(BaseModel):
         description="Minimum number of user-assistant message pairs to preserve when truncating.",
     )
 
-    system_prompt: str | None = Field(
-        default=None,
-        description="Default system prompt. Can be overridden by session.",
+    system_prompt: str = Field(
+        default="You are a helpful assistant.",
+        description="Default system prompt. UI-editable global setting.",
     )
     system_prompt_template: str | None = Field(
-        default=None,
-        description="Jinja2 template for system prompt. Variables: session_id, model, created_at, custom vars.",
+        default="""{% if memories %}
+The following are relevant memories from past conversations:
+
+{% for m in memories %}
+- {{ m.content }}
+{% endfor %}
+
+{% endif %}
+You are a helpful assistant.""",
+        description="Jinja2 template for system prompt. When set (non-None), used as the complete prompt. "
+        "Variables: session_id, model, created_at, memories, custom vars. "
+        "When None, falls back to system_prompt.",
     )
     template_variables: dict[str, Any] = Field(
         default_factory=dict,

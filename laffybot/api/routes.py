@@ -7,7 +7,7 @@ import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
 from loguru import logger
@@ -48,8 +48,10 @@ from laffybot.api.schemas import (
     SessionModelUpdateRequest,
     SessionResponse,
     SessionTitleUpdateRequest,
+    SystemPromptUpdateRequest,
     TestResultResponse,
 )
+from laffybot.config import ContextConfig
 from laffybot.memory import MemoryNotFoundError, MemoryStore
 from laffybot.providers.errors import (
     ModelNotFoundError,
@@ -198,7 +200,6 @@ async def create_session(
 ) -> dict[str, object]:
     try:
         session = await manager.create_session(
-            system_prompt=payload.system_prompt,
             max_iterations=payload.max_iterations,
             provider_id=payload.provider_id,
             model_name=payload.model_name,
@@ -421,6 +422,27 @@ async def update_session_title(
     # Return updated session
     updated_session = await store.get_session(session_id)
     return _serialize_session_detail(updated_session)
+
+
+# ─── System Prompt Routes ─────────────────────────────────────────────────────
+
+
+@router.get("/settings/system-prompt")
+async def get_system_prompt(
+    request: Request,
+) -> dict[str, str]:
+    context_config: ContextConfig = request.app.state.context_config
+    return {"system_prompt": context_config.system_prompt}
+
+
+@router.put("/settings/system-prompt")
+async def set_system_prompt(
+    payload: SystemPromptUpdateRequest,
+    request: Request,
+) -> dict[str, str]:
+    context_config: ContextConfig = request.app.state.context_config
+    context_config.system_prompt = payload.system_prompt
+    return {"system_prompt": context_config.system_prompt}
 
 
 # ─── Settings Routes ───────────────────────────────────────────────────────────

@@ -69,7 +69,6 @@ class SessionManager:
 
     async def create_session(
         self,
-        system_prompt: str | None = None,
         max_iterations: int = 10,
         provider_id: str | None = None,
         model_name: str | None = None,
@@ -95,7 +94,7 @@ class SessionManager:
             session_id=session_id,
             provider_id=provider_id,
             model_name=model_name,
-            system_prompt=system_prompt,
+            system_prompt=None,
             max_iterations=max_iterations,
         )
         logger.info(
@@ -340,7 +339,7 @@ class SessionManager:
 
         return await self._context_builder.build_messages(
             session_id=session.session_id,
-            system_prompt=session.system_prompt,
+            system_prompt=self._context_builder.config.system_prompt,
             history=history,
             current_message=current_message,
             model=model or session.model_name,

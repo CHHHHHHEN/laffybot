@@ -77,12 +77,13 @@ POST /api/v1/sessions
 **请求体:**
 ```json
 {
-    "system_prompt": "You are a helpful assistant.",
     "max_iterations": 10
 }
 ```
 
 > 移除了 `model` 字段。模型由当前全局选中决定，创建会话时自动从 ProviderStore 解析 model_name 写入 session 快照。
+>
+> `system_prompt` 字段已移除。系统提示改为全局设置，可通过 `GET/PUT /api/v1/settings/system-prompt` 管理。
 
 **响应:**
 ```json
@@ -300,7 +301,41 @@ event: message
 data: {"type": "done", "stop_reason": "cancelled"}
 ```
 
-### 6. 删除会话
+### 6. 系统提示设置
+
+```
+GET /api/v1/settings/system-prompt
+```
+
+**响应:**
+```json
+{
+    "system_prompt": "You are a helpful assistant."
+}
+```
+
+```
+PUT /api/v1/settings/system-prompt
+```
+
+**请求体:**
+```json
+{
+    "system_prompt": "You are a helpful assistant. Be concise."
+}
+```
+
+**响应:**
+```json
+{
+    "system_prompt": "You are a helpful assistant. Be concise."
+}
+```
+
+> 系统提示为全局设置，对所有新会话生效。重启后恢复为默认值。
+> 若已配置 `system_prompt_template`（config.json），模板将作为完整提示词，此处设置不生效。
+
+### 7. 删除会话
 
 ```
 DELETE /api/v1/sessions/{session_id}

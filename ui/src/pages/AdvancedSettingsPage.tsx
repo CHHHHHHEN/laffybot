@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Settings2, Loader2, Check, X, Brain } from 'lucide-react'
-import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel, useExtractModel, useSetExtractModel, useClearExtractModel } from '@/hooks/use-providers'
+import { Settings2, Loader2, Check, X, Brain, MessageSquareText } from 'lucide-react'
+import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel, useExtractModel, useSetExtractModel, useClearExtractModel, useSystemPrompt, useSetSystemPrompt } from '@/hooks/use-providers'
 import { Button } from '@/components/ui/Button'
 import { useToastStore } from '@/stores/toast-store'
 
@@ -118,15 +118,25 @@ export function AdvancedSettingsPage() {
   const { data: providers = [], isLoading: providersLoading } = useProviders()
   const { data: currentSummaryConfig } = useSummaryModel()
   const { data: currentExtractConfig } = useExtractModel()
+  const { data: systemPromptData } = useSystemPrompt()
   const setSummaryModel = useSetSummaryModel()
   const clearSummaryModel = useClearSummaryModel()
   const setExtractModel = useSetExtractModel()
   const clearExtractModel = useClearExtractModel()
+  const setSystemPrompt = useSetSystemPrompt()
 
   const [isSavingSummary, setIsSavingSummary] = useState(false)
   const [isClearingSummary, setIsClearingSummary] = useState(false)
   const [isSavingExtract, setIsSavingExtract] = useState(false)
   const [isClearingExtract, setIsClearingExtract] = useState(false)
+  const [systemPromptValue, setSystemPromptValue] = useState('')
+  const [isSavingSystemPrompt, setIsSavingSystemPrompt] = useState(false)
+  const [systemPromptInitialized, setSystemPromptInitialized] = useState(false)
+
+  if (!systemPromptInitialized && systemPromptData) {
+    setSystemPromptValue(systemPromptData.system_prompt)
+    setSystemPromptInitialized(true)
+  }
 
   const handleSaveSummary = async (providerId: string, modelName: string) => {
     setIsSavingSummary(true)
@@ -176,6 +186,18 @@ export function AdvancedSettingsPage() {
     }
   }
 
+  const handleSaveSystemPrompt = async () => {
+    setIsSavingSystemPrompt(true)
+    try {
+      await setSystemPrompt.mutateAsync(systemPromptValue)
+      useToastStore.getState().addToast('success', '系统提示已保存')
+    } catch {
+      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+    } finally {
+      setIsSavingSystemPrompt(false)
+    }
+  }
+
   if (providersLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -186,6 +208,48 @@ export function AdvancedSettingsPage() {
 
   return (
     <div className="p-6 max-w-[720px]">
+      {/* System Prompt Section */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-lg bg-[var(--color-secondary-bg)] flex items-center justify-center">
+          <MessageSquareText size={20} className="text-[var(--color-text-secondary)]" />
+        </div>
+        <div>
+          <h3 className="text-base font-medium text-[var(--color-text-primary)]">系统提示</h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            为所有新会话设置的全局系统提示词
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-page-bg)] p-4 mb-8">
+        <div className="text-sm text-[var(--color-text-secondary)] space-y-2 mb-4">
+          <p>系统提示词会在每个新会话开始前注入 LLM 上下文。此处设置的提示词会在重启后恢复为默认值。</p>
+          <p>如果你在 config.json 中配置了 <code className="text-[var(--color-text-primary)] bg-[var(--color-secondary-bg)] px-1 rounded">system_prompt_template</code>，则模板会作为完整提示词，此处设置将不生效。</p>
+        </div>
+
+        <textarea
+          value={systemPromptValue}
+          onChange={(e) => setSystemPromptValue(e.target.value)}
+          rows={5}
+          className="w-full px-3 py-2 rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] resize-y font-mono"
+          placeholder="输入系统提示词..."
+        />
+
+        <div className="flex justify-end mt-4">
+          <Button
+            onClick={handleSaveSystemPrompt}
+            disabled={isSavingSystemPrompt}
+          >
+            {isSavingSystemPrompt ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Check size={14} />
+            )}
+            保存系统提示
+          </Button>
+        </div>
+      </div>
+
       {/* Summary Model Section */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-lg bg-[var(--color-secondary-bg)] flex items-center justify-center">

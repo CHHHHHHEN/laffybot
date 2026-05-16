@@ -105,6 +105,7 @@ def create_app(
     app.state.session_manager = session_manager_obj
     app.state.memory_manager = memory_manager_obj
     app.state.memory_store = memory_store_obj
+    app.state.context_config = context_config or ContextConfig()
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(

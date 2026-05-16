@@ -59,16 +59,15 @@ class SimpleContextBuilder(ContextBuilder):
         messages: list[dict[str, Any]] = []
 
         # 1. Render system prompt
-        # Priority: session-specific prompt > config template > config static prompt
-        effective_prompt = system_prompt
-        if effective_prompt is None and self._config.system_prompt_template:
+        # Priority: template > ContextConfig.system_prompt
+        if self._config.system_prompt_template:
             effective_prompt = self._template_renderer.render(
                 session_id=session_id,
                 model=model,
                 created_at=created_at,
                 **extra_vars,
             )
-        elif effective_prompt is None:
+        else:
             effective_prompt = self._config.system_prompt
 
         if effective_prompt:
