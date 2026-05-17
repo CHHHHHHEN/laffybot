@@ -15,3 +15,17 @@
 ## Implementation Plan
 
 
+
+## Scope Definition
+
+### In Scope
+
+
+### Out of Scope
+
+
+### Deprecated
+
+
+## References
+

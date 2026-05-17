@@ -11,11 +11,11 @@ interface SessionsPage {
   offset: number
 }
 
-export function useSessions(archived?: boolean) {
+export function useSessions() {
   return useInfiniteQuery({
-    queryKey: ['sessions', { archived }],
+    queryKey: ['sessions'],
     queryFn: async ({ pageParam = 0 }) => {
-      const res = await api.listSessions({ limit: PAGE_LIMIT, offset: pageParam, archived })
+      const res = await api.listSessions({ limit: PAGE_LIMIT, offset: pageParam })
       return res as SessionsPage
     },
     getNextPageParam: (lastPage) => {
@@ -32,7 +32,7 @@ export function useCreateSession() {
   return useMutation({
     mutationFn: (data: api.CreateSessionRequest) => api.createSession(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions', { archived: false }] })
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
     },
   })
 }
@@ -62,7 +62,7 @@ export function useDeleteSession() {
   return useMutation({
     mutationFn: (id: string) => api.deleteSession(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions', { archived: true }] })
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
     },
   })
 }
