@@ -22,6 +22,7 @@ from laffybot.agent.tools.filesystem import (
     WriteFileTool,
 )
 from laffybot.agent.tools.registry import ToolRegistry
+from laffybot.agent.tools.shell import ExecTool
 from laffybot.api.dependencies import (
     build_app_setting_store,
     build_memory_manager,
@@ -62,6 +63,7 @@ def create_app(
     tool_registry_obj.register(WriteFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(EditFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(ListDirTool(workspace=Path.cwd()))
+    tool_registry_obj.register(ExecTool(working_dir=str(Path.cwd())))
     session_manager_obj = build_session_manager(
         store=store_obj,
         provider_store=provider_store_obj,
