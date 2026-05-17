@@ -1,7 +1,7 @@
 # 记忆系统实现路线
 
-> **实现状态**：Phase 0 ✅ 已完成，Phase 1 ✅ 已完成，Phase 2 ✅ 已完成，Phase 2 续 ✅ 已完成
-> **最后更新**：2026-05-16（记忆提取时机已更新：详见本期 archive）
+> **实现状态**：Phase 0 ✅ 已完成，Phase 1 ✅ 已完成，Phase 2 ✅ 已完成，Phase 3 ✅ 已完成，Phase 4 ⏳ 计划中
+> **最后更新**：2026-05-17（Phase 2 整合 Agent 已实现）
 >
 > **文档范围说明**：本文档规划将 Codex 两阶段记忆管道选择性迁移到 Laffybot 的实现路线。阅读前请先了解 `docs/third-party/codex/codex-memory-system-design.md`。
 >
@@ -24,7 +24,7 @@
 | 使用频率 + 最近性排序 | 完整采纳 | Phase 2 选择算法直接沿用 |
 | 遗忘窗口（max_unused_days） | 完整采纳 | 低频/过时记忆自动淘汰 |
 | 记忆分类存储 | 完整采纳 | 按 tags 字段分类，数据库单表存储（替代 Codex 的文件分层方案） |
-| 使用反馈回路 | 采纳，推迟到 Phase 3 | 先在内存中跟踪，后续持久化 |
+| 使用反馈回路 | 采纳，推迟到 Phase 4 | 先在内存中跟踪，后续持久化 |
 
 ### 适配的设计
 
@@ -35,7 +35,7 @@
 | Git 工作区基线 | 简化为文件修改时间戳。以文件最后修改时间判断是否需要重新整合 |
 | MCP 服务器 | 适配为 HTTP API 端点，挂载到 `laffybot/api/routes.py` 对应路由组下 |
 | 开发指令注入（memory_summary 自动注入） | 通过 ContextBuilder 的系统提示模板变量注入 |
-| 渐进式披露 | 分两步实现：Phase 2 全量注入摘要，Phase 3 优化为按需搜索 |
+| 渐进式披露 | 分两步实现：Phase 3 全量注入摘要，Phase 4 优化为按需搜索 |
 | 租约机制 | 无需租约。单实例串行处理无需分布式锁 |
 | 内存模式状态机 | 简化：`enabled` 字段仅作信息记录，运行时的启用由提取模型是否已配置决定；后续可按需引入完整状态管理 |
 
@@ -45,7 +45,7 @@
 |-----------|------|
 | Skills 目录 | Laffybot 尚无流程复用需求；可在记忆系统成熟后补充 |
 | Extensions 扩展记忆源 | Laffybot 无第三方扩展生态，无 Ad-hoc 更新需求 |
-| 整合 Agent（沙箱约束） | Laffybot 无子 Agent 架构，不需要隔离执行 |
+| 整合 Agent 沙箱约束（隔离执行模型） | Laffybot 无子 Agent 架构，整合 Agent 无需隔离沙箱 |
 | 速率限制门控 | Laffybot 使用用户自托管模型，配额充足 |
 | 冷却期 | 串行单次处理无需冷却 |
 | 脱敏处理 | Laffybot 当前不采集敏感信息；可由 Prompt 约束代替 |
@@ -55,21 +55,26 @@
 ```
 Session 完成 ──► Phase 1 提取 ──► 数据库 (memories 表)
                                       │
-新 Session 启动 ──► Phase 2 整合 ──► 选中 Top-N ──► 注入系统提示 ──► Agent 执行
+                                      ▼
+                               Phase 2 整合 ──► consolidated_memory 表
                                       │
-                                     Phase 3 反馈 ──► 更新排序权重
+                                      ▼
+新 Session 启动 ──► Phase 3 注入 ──► 读取整合记忆 ──► 注入系统提示 ──► Agent 执行
+                                      │
+                                     Phase 4 反馈 ──► 更新排序权重
 ```
 
 **数据流**：
 
 1. Session 正常完成后，异步触发 Phase 1：将 Session 消息历史提取为结构化记忆，写入 `memories` 数据库表
-2. 新 Session 启动时，触发 Phase 2：从已有记忆中选择 Top-N，生成紧凑摘要，通过 ContextBuilder 注入系统提示
-3. Agent 执行后，记忆引用信息回写排序指标（Phase 3）
+2. Phase 1 完成后检查未整合记忆数量，达到阈值时触发 Phase 2 整合 Agent：合并原始记忆为单一整合记忆，写入 `consolidated_memory` 表
+3. 新 Session 启动时，触发 Phase 3：优先读取整合记忆注入上下文；无整合记忆时降级选取 Top-N 原始记忆
+4. Agent 执行后，记忆引用信息回写排序指标（Phase 4）
 
 **状态与错误路径**：
 
 - 提取失败（LLM 调用失败、存储写入失败）：记录日志，不阻塞 Session 流程
-- Phase 2 无可用记忆：空注入，Session 正常执行
+- Phase 3 无可用记忆：空注入，Session 正常执行
 - 存储容量满：按遗忘窗口淘汰最旧记忆，再写入新记忆
 
 ## 存储结构
@@ -94,12 +99,12 @@ Session 完成 ──► Phase 1 提取 ──► 数据库 (memories 表)
 ### 依赖关系
 
 ```
-Phase 0 ───────────► Phase 1 ──► Phase 2 ──► Phase 3
-  存储基础              提取         注入         优化
+Phase 0 ───────────► Phase 1 ──► Phase 2 ──► Phase 3 ──► Phase 4
+  存储基础              提取         整合         注入         优化
 ```
 
-- **Phase 0 ~ Phase 2** 构成最小可用记忆系统（MVP），交付后可上线
-- **Phase 3** 为体验优化，在 MVP 使用后迭代
+- **Phase 0 ~ Phase 3** 构成最小可用记忆系统（MVP），交付后可上线
+- **Phase 4** 为体验优化，在 MVP 使用后迭代
 
 ### Phase 0：存储基础 ✅ 已实现
 
@@ -147,7 +152,46 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ---
 
-### Phase 2：上下文注入 ✅ 已实现
+### Phase 2：整合 Agent ✅ 已实现
+
+**目标**：将多条原始记忆通过 LLM 合并为单一整合记忆，消除相似内容冗余。
+
+**任务**：
+
+- 新增 `consolidated_memory` 表和 `ConsolidatedMemoryStore`，存储单一整合记忆
+- 新增 `MemoryConsolidator`，调用 LLM 合并相似内容并去重
+- 新增整合 Agent Prompt 模板，包含去重指令
+- 未整合原始记忆达到阈值（默认 10 条）时自动触发整合
+- 通过 `asyncio.Lock` 防止并发触发
+- 注入时优先读取整合记忆，无整合记忆时降级为原始记忆
+
+**新增配置项**：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `consolidation_trigger_count` | 10 | 新增 N 条原始记忆后触发整合 |
+| `consolidation_model` | None | 整合模型（占位，运行时通过 UI 配置） |
+| `max_source_memories` | 50 | 整合时最多处理的原始记忆数量 |
+
+**新增 API**：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/consolidated-memory` | 获取整合记忆内容 |
+| POST | `/api/v1/consolidated-memory/trigger` | 手动触发整合 |
+| GET | `/api/v1/consolidated-memory/status` | 整合状态统计 |
+| GET/PUT/DELETE | `/api/v1/settings/consolidation-model` | 整合模型配置 |
+
+**完成后产出**：
+- 单一整合记忆替代多条原始记忆注入
+- 相似内容自动合并去重
+- 整合记忆来源可追溯
+
+**依赖**：Phase 1
+
+---
+
+### Phase 3：上下文注入 ✅ 已实现
 
 **目标**：在新建 Session 时将记忆注入上下文，使 Agent 知道先前会话的知识。
 
@@ -155,10 +199,10 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 **注入逻辑**：
 
-- Session 启动时检查可用记忆
-- 按使用频率 + 最近性选择 Top-N
-- 生成紧凑摘要注入系统提示
-- 控制记忆部分的 Token 预算，不影响核心提示和历史
+- Session 启动时检查可用整合记忆
+- 优先注入整合记忆（单一精简内容）
+- 无整合记忆时降级为原创记忆：按使用频率 + 最近性选择 Top-N
+- Token 预算限定后才截断，不影响核心提示和历史
 
 **记忆查询接口**（Phase 1 已实现）：
 
@@ -177,7 +221,7 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 
 ---
 
-### Phase 3：优化迭代
+### Phase 4：优化迭代
 
 **目标**：提升记忆的质量和效率，引入反馈循环。
 
@@ -192,19 +236,19 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 - 记忆质量自我优化（好记忆更突出，坏记忆被遗忘）
 - 记忆按需披露，不浪费 Token
 
-**依赖**：Phase 2
+**依赖**：Phase 3
 
 ## 集成点
 
 ### ContextBuilder
 
-- 新增系统提示模板变量 `{{ memories }}`。`SystemPromptTemplate.render()` 已支持 `**extra_vars`，但 `ContextBuilder.build_messages()` 当前不接收 `extra_vars`；Phase 2 需扩展其接口以透传记忆数据到模板渲染
+- 新增系统提示模板变量 `{{ memories }}`。`SystemPromptTemplate.render()` 已支持 `**extra_vars`，但 `ContextBuilder.build_messages()` 当前不接收 `extra_vars`；Phase 3 需扩展其接口以透传记忆数据到模板渲染
 - 容量控制为记忆预留 Token 预算：优先保证系统提示和历史消息，记忆部分可被截断
 
 ### SessionManager
 
 - Session 归档时触发记忆提取（`POST /sessions/{session_id}/archive` 路由调用 `SessionManager.archive_session()`，后者在设置 `archived_at` 后 fire-and-forget 调用 `_trigger_extract`）
-- `send_message()` 开始前的消息构建流程中，同步加载当前 Phase 2 产出到模板变量
+- `send_message()` 开始前的消息构建流程中，同步加载当前 Phase 3 产出到模板变量
 - 通过依赖注入引入 MemoryManager 实例
 
 ### 配置系统
@@ -217,8 +261,11 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 | `extract_model` | 提取模型默认值 | 仅由 UI 设置（AppSettingStore），`MemoryConfig` 中该字段当前不参与运行时提取判断；提取流程通过 `get_extract_model()` 读取 UI 配置，未配置时静默跳过 |
 | `max_session_summaries` | 最大记忆数 | `50` |
 | `max_unused_days` | 遗忘窗口 | `30` |
-| `top_n_for_injection` | 注入时选 N 条 | `5` |
-| `max_memory_tokens` | 记忆部分 Token 上限 | `1000` |
+| `top_n_for_injection` | 注入时选 N 条（降级到原始记忆时使用） | `5` |
+| `max_memory_tokens` | 记忆部分 Token 上限（降级到原始记忆时使用） | `1000` |
+| `consolidation_trigger_count` | 触发整合的未整合记忆阈值 | `10` |
+| `consolidation_model` | 整合模型（占位，运行时通过 UI 配置） | `None` |
+| `max_source_memories` | 单次整合最大原始记忆数 | `50` |
 
 ## 错误处理与边界情况
 
@@ -228,8 +275,8 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 | LLM 调用失败（网络超时、模型不可用） | 记录 warning 日志后静默退出，不重试（同 auto-title 模式）；Session 正常流程不受影响 |
 | 记忆数据库写入失败（磁盘满等） | 记录日志，不阻塞 Session 流程 |
 | 提取结果被 No-Op 门控丢弃 | 记录 debug 日志，不写入数据库 |
-| Phase 2 无可用记忆 | 空注入，Session 正常执行 |
-| 同时触发多个提取（多个 Session 同时完成） | 每个提取独立串行执行，不加锁；Phase 2 读取时忽略未完成的提取 |
+| Phase 3 无可用记忆 | 空注入，Session 正常执行 |
+| 同时触发多个提取（多个 Session 同时完成） | 每个提取独立串行执行，不加锁；Phase 3 读取时忽略未完成的提取 |
 | Session 已被提取过 | 查询 `memories` 表中该 session_id 的记录，已存在则跳过 |
 
 ---
@@ -237,6 +284,8 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 > **Implementation record**: see `docs/archive/phase2-continue-memory-injection-fix-2026-05-16.md`
 
 > **Implementation record**: see `docs/archive/memory-extraction-timing-fix-2026-05-16.md`
+
+> **Implementation record**: see `docs/archive/memory-consolidation-agent-2026-05-17.md`
 
 ## 设计决策
 
@@ -249,4 +298,4 @@ Phase 0 ───────────► Phase 1 ──► Phase 2 ──►
 | 提取模型 | 可配置，**独立于 summary_model** | 与 summary_model 共用 | 提取任务需较强指令遵循能力，独立配置更灵活 |
 | 运行时启用 | 隐式：提取模型已配置即表示启用 | config.yaml `enabled` 显式开关 | 用户配置提取模型后立即生效，无需重启 |
 | Phase 1 串行 | 一次处理一个 Session | 批量并行 | 会话量级低，串行更简单 |
-| Phase 2 查询接口 | 先实现搜索，后续按需拆分 | 立即实现 list/read/search 三个端点 | 减少 MVP 接口 surface |
+| Phase 3 查询接口 | 先实现搜索，后续按需拆分 | 立即实现 list/read/search 三个端点 | 减少 MVP 接口 surface |

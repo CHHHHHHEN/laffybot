@@ -7,7 +7,7 @@ import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
 from loguru import logger
@@ -18,6 +18,7 @@ from laffybot.agent.heartbeat import HeartbeatManager
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import (
     get_app_setting_store,
+    get_memory_manager,
     get_memory_store,
     get_provider_store,
     get_session_manager,
@@ -26,6 +27,8 @@ from laffybot.api.dependencies import (
 )
 from laffybot.api.event_bus import GlobalEvent, get_event_bus
 from laffybot.api.schemas import (
+    ConsolidatedMemoryResponse,
+    ConsolidationStatusResponse,
     HealthResponse,
     HistoryResponse,
     MemoryListResponse,
@@ -52,7 +55,7 @@ from laffybot.api.schemas import (
     TestResultResponse,
 )
 from laffybot.config import ContextConfig
-from laffybot.memory import MemoryNotFoundError, MemoryStore
+from laffybot.memory import MemoryManager, MemoryNotFoundError, MemoryStore
 from laffybot.providers.errors import (
     ModelNotFoundError,
     ProviderConnectionError,
@@ -569,6 +572,43 @@ async def delete_extract_model(
     return {"status": "cleared"}
 
 
+# ─── Consolidation-Model Settings ───────────────────────────────────────────────
+
+
+@router.get("/settings/consolidation-model")
+async def get_consolidation_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str] | None:
+    config = await app_setting_store.get_consolidation_model()
+    if config is None:
+        return None
+    return {"provider_id": config.provider_id, "model_name": config.model_name}
+
+
+@router.put("/settings/consolidation-model")
+async def set_consolidation_model(
+    payload: SessionModelUpdateRequest,
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+    provider_store: ProviderStore = Depends(get_provider_store),
+) -> dict[str, str]:
+    await provider_store.get_provider(payload.provider_id)
+    models = await provider_store.list_models(payload.provider_id)
+    if not any(m.name == payload.model_name for m in models):
+        raise ModelNotFoundError(payload.model_name)
+    await app_setting_store.set_consolidation_model(
+        payload.provider_id, payload.model_name
+    )
+    return {"provider_id": payload.provider_id, "model_name": payload.model_name}
+
+
+@router.delete("/settings/consolidation-model")
+async def delete_consolidation_model(
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+) -> dict[str, str]:
+    await app_setting_store.delete_consolidation_model()
+    return {"status": "cleared"}
+
+
 # ─── Memory Routes ──────────────────────────────────────────────────────────────
 
 
@@ -630,6 +670,80 @@ async def delete_memory(
 ) -> dict[str, str]:
     await store.delete_memory(memory_id)
     return {"status": "deleted", "memory_id": memory_id}
+
+
+# ─── Consolidated Memory Routes ────────────────────────────────────────────────
+
+
+@router.get("/consolidated-memory", response_model=ConsolidatedMemoryResponse)
+async def get_consolidated_memory(
+    memory_manager: MemoryManager | None = Depends(get_memory_manager),
+) -> dict[str, object]:
+    if memory_manager is None or memory_manager.consolidated_store is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "CONSOLIDATED_MEMORY_NOT_FOUND",
+                "message": "No consolidated memory available",
+            },
+        )
+    record = await memory_manager.consolidated_store.get()
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "CONSOLIDATED_MEMORY_NOT_FOUND",
+                "message": "No consolidated memory available",
+            },
+        )
+    return record
+
+
+@router.post("/consolidated-memory/trigger")
+async def trigger_consolidation(
+    memory_manager: MemoryManager | None = Depends(get_memory_manager),
+) -> dict[str, object]:
+    if memory_manager is None or memory_manager.consolidator is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "CONSOLIDATION_NOT_CONFIGURED",
+                "message": "Consolidation model not configured",
+            },
+        )
+    performed = await memory_manager.consolidator.try_consolidate()
+    return {
+        "performed": performed,
+        "message": "Consolidation triggered"
+        if performed
+        else "Consolidation skipped (below threshold or in progress)",
+    }
+
+
+@router.get("/consolidated-memory/status", response_model=ConsolidationStatusResponse)
+async def get_consolidation_status(
+    memory_manager: MemoryManager | None = Depends(get_memory_manager),
+    store: MemoryStore = Depends(get_memory_store),
+) -> dict[str, object]:
+    total_raw = 0
+    consolidated_source_count = 0
+    has_consolidated = False
+
+    if memory_manager is not None and memory_manager.consolidated_store is not None:
+        record = await memory_manager.consolidated_store.get()
+        if record is not None and record["content"]:
+            has_consolidated = True
+            consolidated_source_count = len(record["source_memory_ids"])
+
+    if store is not None:
+        _, total_raw = await store.list_memories(limit=1, offset=0)
+
+    return {
+        "has_consolidated_memory": has_consolidated,
+        "total_raw_memories": total_raw,
+        "consolidated_source_count": consolidated_source_count,
+        "unconsolidated_count": max(0, total_raw - consolidated_source_count),
+    }
 
 
 # ─── Health Routes ─────────────────────────────────────────────────────────────

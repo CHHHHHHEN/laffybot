@@ -44,3 +44,17 @@ class MemoryConfig(BaseModel):
         default="memory_data",
         description="Root directory for memory storage. Relative paths are resolved against the working directory.",
     )
+    consolidation_trigger_count: int = Field(
+        default=10,
+        ge=1,
+        description="Number of new raw memories that trigger consolidation.",
+    )
+    consolidation_model: str | None = Field(
+        default=None,
+        description="Placeholder: consolidation model name. Runtime value is read from AppSettingStore (consolidation_model).",
+    )
+    max_source_memories: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum raw memories to include in a single consolidation pass.",
+    )

@@ -515,6 +515,37 @@ export function deleteMemory(memoryId: string) {
   })
 }
 
+/* ---- Consolidated Memory API ---- */
+
+export interface ConsolidatedMemoryResponse {
+  content: string
+  source_memory_ids: string[]
+  last_consolidated_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ConsolidationStatusResponse {
+  has_consolidated_memory: boolean
+  total_raw_memories: number
+  consolidated_source_count: number
+  unconsolidated_count: number
+}
+
+export function getConsolidatedMemory() {
+  return apiRequest<ConsolidatedMemoryResponse>('/api/v1/consolidated-memory')
+}
+
+export function getConsolidationStatus() {
+  return apiRequest<ConsolidationStatusResponse>('/api/v1/consolidated-memory/status')
+}
+
+export function triggerConsolidation() {
+  return apiRequest<{ performed: boolean; message: string }>('/api/v1/consolidated-memory/trigger', {
+    method: 'POST',
+  })
+}
+
 /* ---- Health API ---- */
 
 export function checkHealth() {

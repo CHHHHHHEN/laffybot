@@ -183,3 +183,18 @@ class MemorySourceResponse(BaseModel):
     session_id: str
     session_title: str | None
     messages: list[MessageResponse]
+
+
+class ConsolidatedMemoryResponse(BaseModel):
+    content: str
+    source_memory_ids: list[str]
+    last_consolidated_at: str | None
+    created_at: str
+    updated_at: str
+
+
+class ConsolidationStatusResponse(BaseModel):
+    has_consolidated_memory: bool
+    total_raw_memories: int
+    consolidated_source_count: int
+    unconsolidated_count: int

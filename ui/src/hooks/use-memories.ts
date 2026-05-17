@@ -27,6 +27,33 @@ export function useMemorySource(memoryId: string | undefined) {
   })
 }
 
+export function useConsolidatedMemory() {
+  return useQuery({
+    queryKey: ['consolidatedMemory'],
+    queryFn: () => api.getConsolidatedMemory(),
+    staleTime: 30_000,
+  })
+}
+
+export function useConsolidationStatus() {
+  return useQuery({
+    queryKey: ['consolidationStatus'],
+    queryFn: () => api.getConsolidationStatus(),
+    staleTime: 10_000,
+  })
+}
+
+export function useTriggerConsolidation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.triggerConsolidation(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consolidationStatus'] })
+      queryClient.invalidateQueries({ queryKey: ['consolidatedMemory'] })
+    },
+  })
+}
+
 export function useDeleteMemory() {
   const queryClient = useQueryClient()
   return useMutation({

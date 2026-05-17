@@ -1,8 +1,98 @@
 import { useState } from 'react'
-import { Loader2, Search, Trash2, MessageSquare, ChevronLeft, Database } from 'lucide-react'
-import { useMemories, useMemory, useMemorySource, useDeleteMemory } from '@/hooks/use-memories'
+import { Loader2, Search, Trash2, MessageSquare, ChevronLeft, Database, Layers, RefreshCw } from 'lucide-react'
+import { useMemories, useMemory, useMemorySource, useDeleteMemory, useConsolidationStatus, useConsolidatedMemory, useTriggerConsolidation } from '@/hooks/use-memories'
 import { Button } from '@/components/ui/Button'
 import { useToastStore } from '@/stores/toast-store'
+
+function ConsolidationSection() {
+  const { data: status, isLoading: statusLoading } = useConsolidationStatus()
+  const { data: consolidated, isLoading: consolidatedLoading } = useConsolidatedMemory()
+  const triggerConsolidation = useTriggerConsolidation()
+  const [showContent, setShowContent] = useState(false)
+  const [isTriggering, setIsTriggering] = useState(false)
+
+  if (statusLoading) return null
+
+  const handleTrigger = async () => {
+    setIsTriggering(true)
+    try {
+      const result = await triggerConsolidation.mutateAsync()
+      useToastStore.getState().addToast(
+        result.performed ? 'success' : 'info',
+        result.performed ? '整合完成' : result.message
+      )
+    } catch {
+      useToastStore.getState().addToast('error', '触发整合失败')
+    } finally {
+      setIsTriggering(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-page-bg)] p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-lg bg-[var(--color-secondary-bg)] flex items-center justify-center">
+          <Layers size={16} className="text-[var(--color-text-secondary)]" />
+        </div>
+        <div className="flex-1">
+          <h4 className="text-sm font-medium text-[var(--color-text-primary)]">记忆整合</h4>
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            将多条原始记忆合并为一条精简的整合记忆
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleTrigger}
+          disabled={isTriggering}
+          title="手动触发整合"
+        >
+          {isTriggering ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <RefreshCw size={14} />
+          )}
+          整合
+        </Button>
+      </div>
+
+      {status && (
+        <div className="grid grid-cols-3 gap-3 text-xs mb-3">
+          <div className="p-2 rounded bg-[var(--color-secondary-bg)]">
+            <span className="text-[var(--color-text-secondary)]">原始记忆</span>
+            <p className="text-[var(--color-text-primary)] font-medium">{status.total_raw_memories}</p>
+          </div>
+          <div className="p-2 rounded bg-[var(--color-secondary-bg)]">
+            <span className="text-[var(--color-text-secondary)]">已整合</span>
+            <p className="text-[var(--color-text-primary)] font-medium">{status.consolidated_source_count}</p>
+          </div>
+          <div className="p-2 rounded bg-[var(--color-secondary-bg)]">
+            <span className="text-[var(--color-text-secondary)]">未整合</span>
+            <p className="text-[var(--color-text-primary)] font-medium">{status.unconsolidated_count}</p>
+          </div>
+        </div>
+      )}
+
+      {status?.has_consolidated_memory && (
+        <>
+          <button
+            onClick={() => setShowContent(!showContent)}
+            className="text-xs text-[var(--color-brand)] hover:underline mb-2"
+          >
+            {showContent ? '隐藏整合内容' : '查看整合内容'}
+          </button>
+          {showContent && (
+            <div className="p-3 rounded bg-[var(--color-secondary-bg)] text-xs text-[var(--color-text-primary)] whitespace-pre-wrap max-h-48 overflow-y-auto">
+              {consolidatedLoading
+                ? <Loader2 size={12} className="animate-spin inline" />
+                : consolidated?.content || '暂无内容'}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
 
 function MemoryDetailView({ memoryId, onBack }: { memoryId: string; onBack: () => void }) {
   const { data: memory, isLoading } = useMemory(memoryId)
@@ -129,6 +219,9 @@ export function MemoryManagePage() {
           </p>
         </div>
       </div>
+
+      {/* Consolidation Status */}
+      <ConsolidationSection />
 
       {/* Search */}
       <div className="relative mb-4">

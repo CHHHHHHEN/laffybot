@@ -78,6 +78,19 @@ class MemoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def get_unconsolidated_memories(
+        self,
+        exclude_ids: list[str],
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Query raw memories not yet included in consolidation.
+
+        Returns memories not in exclude_ids, scored by usage_count and created_at.
+        Returns empty list if no unconsolidated memories exist.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     async def close(self) -> None:
         raise NotImplementedError
 
@@ -215,6 +228,38 @@ class SQLiteMemoryStore(MemoryStore):
             (top_n,),
         ) as cursor:
             rows = await cursor.fetchall()
+        return [self._row_to_memory(row, include_session_title=True) for row in rows]
+
+    async def get_unconsolidated_memories(
+        self,
+        exclude_ids: list[str],
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        db = await self._ensure_db()
+        if exclude_ids:
+            placeholders = ",".join("?" for _ in exclude_ids)
+            sql = f"""
+                SELECT m.*, s.title AS session_title
+                FROM memories m
+                LEFT JOIN sessions s ON s.session_id = m.session_id
+                WHERE m.memory_id NOT IN ({placeholders})
+                ORDER BY m.usage_count DESC, m.created_at DESC
+                LIMIT ?
+            """
+            async with db.execute(sql, [*exclude_ids, limit]) as cursor:
+                rows = await cursor.fetchall()
+        else:
+            async with db.execute(
+                """
+                SELECT m.*, s.title AS session_title
+                FROM memories m
+                LEFT JOIN sessions s ON s.session_id = m.session_id
+                ORDER BY m.usage_count DESC, m.created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ) as cursor:
+                rows = await cursor.fetchall()
         return [self._row_to_memory(row, include_session_title=True) for row in rows]
 
     async def increment_usage(self, memory_id: str) -> None:
