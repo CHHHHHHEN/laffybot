@@ -149,14 +149,17 @@ sessions 表：
 
 #### SSE 流错误处理补充
 
-`send_message()` 是 async generator，`ProviderNotFoundError` 和 `ModelNotFoundError` 在 lock 块内、try 块外抛出，不会进入 `except Exception` 分支。
+`ProviderNotFoundError`、`ModelNotFoundError`、`CancelledError` 由 `SessionManager.send_message()` 统一捕获并转换为 SSE error/cancelled event。`_stream_session_events()` 不处理领域异常，只做事件格式化和流控制。从 `send_message()` 逃逸的未预期异常由 FastAPI 全局 exception handler 捕获，返回 500。
 
-**实现要求**：将 `send_message()` 中 provider resolution（`get_provider_config` + model 校验）移至 `try` 块内，或将这两个异常加入 `try/except` 保护范围。同时在 `_stream_session_events()`（`laffybot/api/session_routes.py`）中新增 `except ProviderNotFoundError` 和 `except ModelNotFoundError` 的捕获，将它们映射为 SSE error event 而非 500 崩溃。映射规则：
+映射规则（由 `SessionManager.send_message()` 统一处理）：
 
-| 异常类型 | SSE error code | 行为 |
-|----------|---------------|------|
-| `ProviderNotFoundError` | `PROVIDER_NOT_FOUND` | yield error event，stream 结束 |
-| `ModelNotFoundError` | `MODEL_NOT_FOUND` | yield error event，stream 结束 |
+| 异常类型 | SSE error code | 处理层 |
+|----------|---------------|--------|
+| `ProviderNotFoundError` | `PROVIDER_NOT_FOUND` | `SessionManager` |
+| `ModelNotFoundError` | `MODEL_NOT_FOUND` | `SessionManager` |
+| `CancelledError` | `CANCELLED` | `SessionManager` |
+| `SessionError` 子类 | `SESSION_ERROR` | `SessionManager` |
+| 未预期异常 | 500 Internal Error | FastAPI 全局 handler |
 
 ### 会话内切换模型
 
@@ -306,7 +309,7 @@ class SessionManager:
 | 新增 | PUT `/sessions/{session_id}/model` 路由 |
 | 新增 | GET/PUT/DELETE `/settings/default-session-model` 路由 |
 | 新增 | GET/PUT/DELETE `/settings/summary-model` 路由 |
-| 修改 | `_stream_session_events()`：新增 `except ProviderNotFoundError` 和 `except ModelNotFoundError` 捕获 |
+| 修改 | `_stream_session_events()`：移除领域异常捕获，统一由 `SessionManager.send_message()` 处理 |
 
 |laffybot/api/dependencies.py||
 |--|--|

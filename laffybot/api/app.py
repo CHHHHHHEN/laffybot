@@ -78,6 +78,7 @@ def create_app(
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Application started: version={}", __version__)
         await memory_manager_obj.initialize()
+        await session_manager_obj.start()
         yield
         logger.info("Application shutting down")
         await session_manager_obj.shutdown()

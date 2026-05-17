@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from typing import Any
 
 from loguru import logger
 
 from laffybot.agent.cancellation import CancellationToken, CancelledError
-from laffybot.agent.events import SSEEvent, event_error
+from laffybot.agent.events import SSEEvent, event_cancelled, event_error
 from laffybot.agent.runner import AgentRunner, AgentRunSpec
 from laffybot.agent.title_generator import TitleGenerator
 from laffybot.agent.tools.registry import ToolRegistry
@@ -24,6 +25,7 @@ from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionAlreadyArchivedError,
     SessionBusyError,
+    SessionError,
     SessionNotArchivedError,
     SessionNotBusyError,
 )
@@ -48,6 +50,8 @@ class SessionManager:
         memory_manager: MemoryManager | None = None,
         max_active_sessions: int = 3,
         tool_timeout_s: int = 120,
+        session_timeout_s: int = 600,
+        watchdog_interval_s: int = 60,
         event_publisher: EventPublisher | None = None,
     ) -> None:
         self.store = store
@@ -57,11 +61,15 @@ class SessionManager:
         self.memory_manager = memory_manager
         self.max_active_sessions = max_active_sessions
         self.tool_timeout_s = tool_timeout_s
+        self._session_timeout_s = session_timeout_s
+        self._watchdog_interval_s = watchdog_interval_s
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
         self._event_publisher = event_publisher
         self._provider_factory = provider_factory
         self._background_tasks: set[asyncio.Task[Any]] = set()
+        self._watchdog_task: asyncio.Task[Any] | None = None
+        self._watchdog_stop_event = asyncio.Event()
 
         if context_builder is not None:
             self._context_builder = context_builder
@@ -82,9 +90,73 @@ class SessionManager:
         self._background_tasks.add(task)
         return task
 
+    async def start(self) -> None:
+        self._watchdog_stop_event.clear()
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+
     async def shutdown(self) -> None:
+        if self._watchdog_task is not None:
+            self._watchdog_stop_event.set()
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+            self._watchdog_task = None
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
+
+    async def _watchdog_loop(self) -> None:
+        while not self._watchdog_stop_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    self._watchdog_stop_event.wait(),
+                    timeout=self._watchdog_interval_s,
+                )
+                break
+            except asyncio.TimeoutError:
+                pass
+
+            try:
+                busy_sessions, _ = await self.store.list_sessions(
+                    status="busy", limit=1000
+                )
+                now = datetime.now(timezone.utc)
+                threshold = self._session_timeout_s
+
+                for session in busy_sessions:
+                    elapsed = (now - session.updated_at).total_seconds()
+                    if elapsed < threshold:
+                        continue
+
+                    logger.warning(
+                        "Stuck-busy session reset: session_id={}, elapsed_s={:.0f}, threshold_s={}",
+                        session.session_id,
+                        elapsed,
+                        threshold,
+                    )
+
+                    token = self._active_tokens.pop(session.session_id, None)
+                    if token is not None:
+                        token.cancel("watchdog timeout")
+
+                    self._locks.pop(session.session_id, None)
+
+                    try:
+                        await self.store.update_session_status(
+                            session.session_id,
+                            "idle",
+                            current_request_id=None,
+                            error_message=f"Session stuck busy for {elapsed:.0f}s",
+                            expected_status="busy",
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Watchdog reset failed (optimistic lock): session_id={}",
+                            session.session_id,
+                        )
+            except Exception:
+                logger.exception("Watchdog scan failed")
 
     @staticmethod
     def _request_id() -> str:
@@ -253,6 +325,11 @@ class SessionManager:
         log.info("Message send started: content_len={}", len(content))
         log.debug("Session status changed: idle -> busy")
 
+        timeout = self._context_builder.config.request_timeout_seconds
+        deadline: float | None = None
+        if timeout is not None and timeout > 0:
+            deadline = asyncio.get_event_loop().time() + timeout
+
         try:
             provider_config = await self.provider_store.get_provider_config(
                 session.provider_id
@@ -292,6 +369,11 @@ class SessionManager:
                 request_id=request_id,
                 cancellation_token=token,
             ):
+                if deadline is not None and asyncio.get_event_loop().time() >= deadline:
+                    token.cancel(reason="request_timeout")
+                    yield event_cancelled("request_timeout")
+                    response_status = "idle"
+                    break
                 if not user_message_saved:
                     await self.store.save_message(session_id, "user", content)
                     user_message_saved = True
@@ -358,19 +440,11 @@ class SessionManager:
                 message=str(exc),
                 details={"reason": exc.reason} if exc.reason else None,
             )
-        except Exception as exc:
-            log.error("Message send failed: error={}", exc)
-            await self.store.update_session_status(
-                session_id,
-                "error",
-                current_request_id=None,
-                error_message=str(exc),
-                expected_status="busy",
-            )
+        except SessionError as exc:
+            log.error("Message send session error: {}", exc)
             yield event_error(
-                code="INTERNAL_ERROR",
+                code="SESSION_ERROR",
                 message=str(exc),
-                details={"error_type": type(exc).__name__},
             )
         finally:
             self._active_tokens.pop(session_id, None)

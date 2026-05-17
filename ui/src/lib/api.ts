@@ -111,11 +111,6 @@ export function updateSessionTitle(sessionId: string, title: string) {
 
 /* ---- Message APIs ---- */
 
-export interface SendMessageResponse {
-  session_id: string
-  request_id: string
-}
-
 export interface HistoryMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -125,13 +120,6 @@ export interface HistoryMessage {
 export interface HistoryResponse {
   session_id: string
   messages: HistoryMessage[]
-}
-
-export function sendMessage(sessionId: string, content: string): Promise<SendMessageResponse> {
-  return apiRequest<SendMessageResponse>(`/api/v1/sessions/${sessionId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ content }),
-  })
 }
 
 export function getHistory(sessionId: string, limit = 50, signal?: AbortSignal) {
@@ -175,6 +163,8 @@ export async function connectSseStream(
 
   const decoder = new TextDecoder()
   let buffer = ''
+  let consecutiveGuardFailures = 0
+  const GUARD_FAILURE_THRESHOLD = 10
 
   while (true) {
     const { done, value } = await reader.read()
@@ -190,15 +180,35 @@ export async function connectSseStream(
         currentEvent = line.slice(7).trim()
       } else if (line.startsWith('data: ')) {
         const data = line.slice(6).trim()
+        let event: SseEvent | undefined
+
         if (data === '{}' && currentEvent === 'done') {
-          onEvent({ type: 'done' } as SseEvent)
+          event = { type: 'done' } as SseEvent
         } else {
           try {
-            const parsed = JSON.parse(data) as SseEvent
-            onEvent(parsed)
+            const parsed = JSON.parse(data)
+            if (isSseEvent(parsed)) {
+              event = parsed
+            } else {
+              consecutiveGuardFailures++
+              console.warn(
+                `[connectSseStream] Invalid SSE event shape (type="${(parsed as Record<string, unknown>)?.type ?? 'unknown'}"): sessionId=${sessionId}`
+              )
+              if (consecutiveGuardFailures >= GUARD_FAILURE_THRESHOLD) {
+                console.error(
+                  `[connectSseStream] Excessive invalid SSE events (${consecutiveGuardFailures}): sessionId=${sessionId}`
+                )
+              }
+            }
           } catch {
-            // skip malformed JSON
+            consecutiveGuardFailures++
+            console.warn('[connectSseStream] Malformed JSON in SSE data')
           }
+        }
+
+        if (event) {
+          consecutiveGuardFailures = 0
+          onEvent(event)
         }
       }
     }
@@ -615,6 +625,17 @@ export type SseEventType =
   | 'cancelled'
   | 'ping'
   | 'title_update'
+
+const VALID_SSE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'session_start', 'content', 'reasoning', 'tool_call', 'tool_result',
+  'iteration_boundary', 'done', 'error', 'cancelled', 'ping', 'title_update',
+])
+
+function isSseEvent(obj: unknown): obj is SseEvent {
+  if (obj === null || obj === undefined || typeof obj !== 'object') return false
+  const candidate = obj as Record<string, unknown>
+  return typeof candidate.type === 'string' && VALID_SSE_EVENT_TYPES.has(candidate.type)
+}
 
 export interface SseEvent {
   type: SseEventType

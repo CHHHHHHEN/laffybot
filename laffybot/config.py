@@ -95,6 +95,12 @@ You are a helpful assistant.""",
         description="Tool types whose outputs are protected from pruning.",
     )
 
+    request_timeout_seconds: float = Field(
+        default=600.0,
+        ge=1.0,
+        description="Maximum total time in seconds for a single request. 0 or negative disables timeout.",
+    )
+
 
 class ApiConfig(BaseSettings):
     """HTTP API configuration."""

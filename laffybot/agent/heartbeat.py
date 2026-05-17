@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import os
 
-from loguru import logger
-
 from laffybot.agent.events import event_ping
 
 # Default heartbeat interval (15 seconds)
@@ -70,33 +68,6 @@ class HeartbeatManager:
         Call this when the stream ends to cancel the background task.
         """
         self._stop_event.set()
-
-    async def run(self) -> None:
-        """Run the heartbeat loop.
-
-        This should be run as a background task. It will:
-        1. Wait for the idle timeout
-        2. If not reset, yield a ping event
-        3. Repeat until stopped
-
-        Yields:
-            SSEEvent: Ping events when idle timeout expires.
-        """
-        while not self._stop_event.is_set():
-            try:
-                # Wait for either reset or timeout
-                await asyncio.wait_for(
-                    self._reset_event.wait(),
-                    timeout=self.interval_s,
-                )
-                # Reset was called, clear the event and continue
-                self._reset_event.clear()
-            except asyncio.TimeoutError:
-                # Timeout expired without reset - this is where we'd yield ping
-                # But since this is a background task, we need a different approach
-                # The caller should use wait_for_ping() instead
-                logger.debug("Heartbeat ping triggered")
-                pass
 
     async def wait_for_ping(self) -> str | None:
         """Wait for idle timeout and return ping event data if needed.

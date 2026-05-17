@@ -13,7 +13,6 @@ from loguru import logger
 
 from laffybot.agent.cancellation import CancellationToken, CancelledError
 from laffybot.agent.events import (
-    ERROR_INTERNAL,
     ERROR_LLM,
     SSEEvent,
     event_cancelled,
@@ -289,24 +288,9 @@ class AgentRunner:
                     stop_reason = "max_iterations"
 
         except CancelledError as e:
-            # Cancellation - emit cancelled event
             log.warning("Agent run cancelled: reason={}", e.reason)
             yield event_cancelled(e.reason)
             stop_reason = "cancelled"
-        except Exception as exc:
-            # Error - emit error event
-            logger.exception("Error during agent execution")
-            error_code = (
-                ERROR_LLM
-                if "api" in str(type(exc).__name__).lower()
-                else ERROR_INTERNAL
-            )
-            yield event_error(
-                code=error_code,
-                message=str(exc),
-                details={"error_type": type(exc).__name__},
-            )
-            stop_reason = "error"
 
         # Emit done event
         log.info("Agent run completed: stop_reason={}, usage={}", stop_reason, usage)

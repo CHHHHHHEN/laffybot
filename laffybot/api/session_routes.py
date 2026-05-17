@@ -10,7 +10,7 @@ from fastapi import status as http_status
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from laffybot.agent.events import SSEEvent, event_error, event_ping
+from laffybot.agent.events import SSEEvent, event_ping
 from laffybot.agent.heartbeat import HeartbeatManager
 from laffybot.api.dependencies import (
     DefaultProviderFactory,
@@ -46,14 +46,11 @@ from laffybot.memory import MemoryManager, MemoryNotFoundError, MemoryStore
 from laffybot.memory.consolidator import MemoryConsolidator
 from laffybot.providers.errors import (
     ModelNotFoundError,
-    ProviderNotFoundError,
 )
 from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionBusyError,
-    SessionError,
     SessionNotFoundError,
-    SessionStateError,
 )
 from laffybot.session.manager import SessionManager
 from laffybot.session.models import SessionInfo, SessionStatus
@@ -130,49 +127,6 @@ async def _stream_session_events(
                 yield f"id: evt_{event_index}\n{await heartbeat.wait_for_ping() or event_ping().to_sse()}"
     except StopAsyncIteration:
         pass
-    except SessionNotFoundError as exc:
-        logger.error("SSE stream error: session_id={}, error={}", session_id, exc)
-        event_index += 1
-        yield _sse_frame(
-            event_error(code="SESSION_NOT_FOUND", message=str(exc)),
-            f"evt_{event_index}",
-        )
-        yield "event: done\ndata: {}\n\n"
-        return
-    except ProviderNotFoundError as exc:
-        logger.error(
-            "SSE stream error: provider_id for session={}, error={}", session_id, exc
-        )
-        event_index += 1
-        yield _sse_frame(
-            event_error(code="PROVIDER_NOT_FOUND", message=str(exc)),
-            f"evt_{event_index}",
-        )
-        yield "event: done\ndata: {}\n\n"
-        return
-    except ModelNotFoundError as exc:
-        logger.error(
-            "SSE stream error: model for session={}, error={}", session_id, exc
-        )
-        event_index += 1
-        yield _sse_frame(
-            event_error(code="MODEL_NOT_FOUND", message=str(exc)),
-            f"evt_{event_index}",
-        )
-        yield "event: done\ndata: {}\n\n"
-        return
-    except SessionError as exc:
-        logger.error("SSE stream error: session_id={}, error={}", session_id, exc)
-        event_index += 1
-        if isinstance(exc, SessionBusyError):
-            code = "SESSION_BUSY"
-        elif isinstance(exc, SessionStateError):
-            code = "SESSION_STATE_ERROR"
-        else:
-            code = "INVALID_REQUEST"
-        yield _sse_frame(event_error(code=code, message=str(exc)), f"evt_{event_index}")
-        yield "event: done\ndata: {}\n\n"
-        return
     finally:
         try:
             current = await manager.get_session_info(session_id)

@@ -54,6 +54,8 @@ def build_session_manager(
     memory_manager: MemoryManager | None = None,
     max_active_sessions: int = 3,
     tool_timeout_s: int = 120,
+    session_timeout_s: int = 600,
+    watchdog_interval_s: int = 60,
     provider_factory: ProviderFactory | None = None,
 ) -> SessionManager:
     return SessionManager(
@@ -66,6 +68,8 @@ def build_session_manager(
         memory_manager=memory_manager,
         max_active_sessions=max_active_sessions,
         tool_timeout_s=tool_timeout_s,
+        session_timeout_s=session_timeout_s,
+        watchdog_interval_s=watchdog_interval_s,
         event_publisher=get_event_bus(),
     )
 
