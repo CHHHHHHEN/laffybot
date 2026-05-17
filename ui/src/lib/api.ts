@@ -609,6 +609,7 @@ export type SseEventType =
   | 'reasoning'
   | 'tool_call'
   | 'tool_result'
+  | 'iteration_boundary'
   | 'done'
   | 'error'
   | 'cancelled'
@@ -621,6 +622,7 @@ export interface SseEvent {
   request_id?: string
   text?: string
   title?: string
+  iteration?: number
   tool_call_id?: string
   name?: string
   arguments?: Record<string, unknown>

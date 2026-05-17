@@ -296,7 +296,7 @@ MessageList 渲染历史消息，滚动到底部
     │
     ▼
 用户输入 model（自由文本输入框，**未实现**最近使用模型建议列表）
-用户填写: system_prompt（可选） + max_iterations（默认 10）
+用户填写: system_prompt（可选） + max_iterations（默认 50）
     │
     ▼
 POST /sessions → 创建会话

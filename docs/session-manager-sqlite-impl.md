@@ -79,7 +79,7 @@ CREATE TABLE sessions (
     current_request_id TEXT,
     error_message TEXT,
     system_prompt TEXT,
-    max_iterations INTEGER NOT NULL DEFAULT 10,
+    max_iterations INTEGER NOT NULL DEFAULT 50,
     archived_at TEXT
 );
 
@@ -101,7 +101,7 @@ CREATE INDEX idx_sessions_created_at ON sessions(created_at);
 - **创建时存储**：`create_session()` 接收这两个参数并持久化到数据库
 - **读取时使用**：`get_session()` 返回的 SessionInfo 包含这两个字段
 - **不可变性**：这两个字段在会话创建后不可修改（如需修改应创建新会话）
-- **默认值**：`system_prompt` 默认为 NULL（可选），`max_iterations` 默认为 10
+- **默认值**：`system_prompt` 默认为 NULL（可选），`max_iterations` 默认为 50
 
 #### messages 表
 

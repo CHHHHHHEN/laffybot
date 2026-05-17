@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { SessionStatusBadge } from './SessionStatusBadge'
 import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Input'
 import type { SessionResponse } from '@/lib/api'
 import { useUpdateSessionTitle } from '@/hooks/use-update-session-title'
-import { useArchiveSession, useUnarchiveSession } from '@/hooks/use-sessions'
+import { useArchiveSession, useUnarchiveSession, useUpdateSessionModel } from '@/hooks/use-sessions'
+import { useProviders, useModels } from '@/hooks/use-providers'
 import { useToastStore } from '@/stores/toast-store'
 
 interface ChatHeaderProps {
@@ -74,6 +76,40 @@ export function ChatHeader({ session }: ChatHeaderProps) {
 
   const isArchived = session?.archived_at != null
 
+  const { data: providers = [] } = useProviders()
+  const { data: models = [] } = useModels(session?.provider_id)
+  const updateSessionModel = useUpdateSessionModel()
+  const [modelSwitching, setModelSwitching] = useState(false)
+
+  const handleProviderChange = (newProviderId: string) => {
+    if (!session) return
+    setModelSwitching(true)
+    const firstModel = models.length > 0 ? models[0].name : ''
+    updateSessionModel.mutate(
+      { sessionId: session.session_id, data: { provider_id: newProviderId, model_name: firstModel } },
+      {
+        onError: () => {
+          useToastStore.getState().addToast('error', '切换模型失败')
+        },
+        onSettled: () => setModelSwitching(false),
+      }
+    )
+  }
+
+  const handleModelChange = (newModelName: string) => {
+    if (!session) return
+    setModelSwitching(true)
+    updateSessionModel.mutate(
+      { sessionId: session.session_id, data: { provider_id: session.provider_id, model_name: newModelName } },
+      {
+        onError: () => {
+          useToastStore.getState().addToast('error', '切换模型失败')
+        },
+        onSettled: () => setModelSwitching(false),
+      }
+    )
+  }
+
   return (
     <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--color-border)] shrink-0">
       <Button
@@ -133,6 +169,30 @@ export function ChatHeader({ session }: ChatHeaderProps) {
                 </Button>
               </>
             )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Select
+              value={session.provider_id}
+              onChange={(e) => handleProviderChange(e.target.value)}
+              disabled={session.status === 'busy' || modelSwitching}
+              inputSize="sm"
+              className="min-w-[90px]"
+            >
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </Select>
+            <Select
+              value={session.model_name}
+              onChange={(e) => handleModelChange(e.target.value)}
+              disabled={session.status === 'busy' || modelSwitching}
+              inputSize="sm"
+              className="min-w-[90px]"
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.name}>{m.name}</option>
+              ))}
+            </Select>
           </div>
           {isArchived ? (
             <>

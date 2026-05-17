@@ -243,7 +243,7 @@ class SessionManager:
 
 创建会话后，默认继承 `default_session_config` 中配置的 provider + model（若未配置则创建失败，引导用户先在设置中配置默认模型）。用户如需切换模型，通过输入框旁的模型选择控件完成。`max_iterations` 在当前版本中不通过 UI 设置（API 层面保留字段）。
 
-**关于 `max_iterations` 的语义**：它控制的是**每次 `send_message()` 调用中 Agent 的最大 LLM 迭代次数**（默认 10），不是整个会话的总次数。每次用户发送一条消息，Agent Runner 循环执行 `for iteration in range(max_iterations)`，每轮包含一次 LLM 请求 + 可能的工具调用。达到上限后停止，`done` 事件的 `stop_reason` 为 `"max_iterations"`。这是一个 per-request 的安全阀，防止单次请求陷入无限工具调用循环。
+**关于 `max_iterations` 的语义**：它控制的是**每次 `send_message()` 调用中 Agent 的最大 LLM 迭代次数**（默认 50），不是整个会话的总次数。每次用户发送一条消息，Agent Runner 循环执行 `for iteration in range(max_iterations)`，每轮包含一次 LLM 请求 + 可能的工具调用。达到上限后停止，`done` 事件的 `stop_reason` 为 `"max_iterations"`。这是一个 per-request 的安全阀，防止单次请求陷入无限工具调用循环。
 
 **关于 `system_prompt` 的变更**：`system_prompt` 已从 per-session 参数移除，改为全局 UI 设置。`SessionCreateRequest` 不再接收 `system_prompt` 字段。系统提示可通过 `GET/PUT /api/v1/settings/system-prompt` 管理，对所有新会话生效。
 

@@ -5,14 +5,13 @@ import { NavLinks } from './NavLinks'
 import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2, Archive, RotateCcw } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
-import { useSessions, useCreateSession, useArchiveSession, useUnarchiveSession, useDeleteSession } from '@/hooks/use-sessions'
+import { useSessions, useArchiveSession, useUnarchiveSession, useDeleteSession } from '@/hooks/use-sessions'
 import { useToastStore } from '@/stores/toast-store'
 
 export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUiStore()
   const navigate = useNavigate()
   const sessionsQuery = useSessions()
-  const createSession = useCreateSession()
   const archiveSession = useArchiveSession()
   const unarchiveSession = useUnarchiveSession()
   const deleteSession = useDeleteSession()
@@ -22,15 +21,8 @@ export function Sidebar() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; isArchived: boolean } | null>(null)
 
-  const handleCreateSession = async () => {
-    try {
-      const session = await createSession.mutateAsync({})
-      if (session) {
-        navigate(`/chat/${session.session_id}`)
-      }
-    } catch (err) {
-      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '创建会话失败')
-    }
+  const handleCreateSession = () => {
+    navigate('/chat')
   }
 
   const handleArchive = async (sessionId: string) => {

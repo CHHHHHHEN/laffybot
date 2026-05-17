@@ -20,6 +20,7 @@ from laffybot.agent.events import (
     event_content,
     event_done,
     event_error,
+    event_iteration_boundary,
     event_reasoning,
     event_session_start,
     event_tool_call,
@@ -213,6 +214,7 @@ class AgentRunner:
                             }
                         )
 
+                    yield event_iteration_boundary(iteration)
                     continue  # Next iteration
 
                 # No tool calls - check for final content

@@ -11,7 +11,6 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
 from pydantic import BaseModel, Field
 
 from laffybot.agent.tools.base import Tool, tool_parameters
@@ -230,10 +229,7 @@ class ExecTool(Tool):
                 await asyncio.wait_for(process.wait(), timeout=5.0)
         finally:
             if not _IS_WINDOWS:
-                try:
-                    os.waitpid(process.pid, os.WNOHANG)
-                except (ProcessLookupError, ChildProcessError) as e:
-                    logger.debug("Process already reaped or not found: {}", e)
+                pass  # process.wait() already reaps the child
 
     def _build_env(self) -> dict[str, str]:
         if _IS_WINDOWS:

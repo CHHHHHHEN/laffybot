@@ -189,6 +189,20 @@ async def _stream_session_events(
         yield "event: done\ndata: {}\n\n"
         return
     finally:
+        try:
+            current = await manager.get_session_info(session_id)
+            if current.status == "busy":
+                logger.warning(
+                    "Session stuck busy after stream cleanup: session_id={}", session_id
+                )
+                await manager.store.update_session_status(
+                    session_id,
+                    "idle",
+                    current_request_id=None,
+                    error_message="Session reset by stream cleanup",
+                )
+        except Exception:
+            logger.exception("Failed to reset stuck busy session in SSE stream cleanup")
         heartbeat.stop()
 
 

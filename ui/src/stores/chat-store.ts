@@ -4,6 +4,12 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
+export interface MessageSegment {
+  type: 'reasoning' | 'content' | 'tool_calls'
+  data: string | ToolCall[]
+  iteration: number
+}
+
 export interface ToolCall {
   tool_call_id: string
   name: string
@@ -22,6 +28,7 @@ export interface Message {
   timestamp: string
   reasoning?: string
   tool_calls?: ToolCall[]
+  segments?: MessageSegment[]
   isStreaming?: boolean
   isError?: boolean
 }
@@ -67,6 +74,7 @@ interface ChatState {
   appendSessionReasoning: (sessionId: string, text: string) => void
   addSessionToolCall: (sessionId: string, toolCall: ToolCall) => void
   updateSessionToolCall: (sessionId: string, toolCallId: string, updates: Partial<ToolCall>) => void
+  appendSessionSegment: (sessionId: string, segment: MessageSegment) => void
   flushSessionStreamBuffer: (sessionId: string) => void
 
   hasLoadedHistory: (sessionId: string) => boolean
@@ -180,6 +188,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         tool_calls: (last.tool_calls || []).map((tc) =>
           tc.tool_call_id === toolCallId ? { ...tc, ...updates } : tc
         ),
+      }
+      return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
+    }),
+  appendSessionSegment: (sessionId, segment) =>
+    set((state) => {
+      const messages = [...(state.messagesBySession[sessionId] ?? [])]
+      if (messages.length === 0) return state
+      const last = messages[messages.length - 1]
+      messages[messages.length - 1] = {
+        ...last,
+        segments: [...(last.segments || []), segment],
       }
       return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
     }),

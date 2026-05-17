@@ -81,7 +81,7 @@ POST /api/v1/sessions
 **请求体:**
 ```json
 {
-    "max_iterations": 10
+    "max_iterations": 50
 }
 ```
 

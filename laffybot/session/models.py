@@ -25,7 +25,7 @@ class SessionInfo:
     current_request_id: str | None = None
     error_message: str | None = None
     system_prompt: str | None = None
-    max_iterations: int = 10
+    max_iterations: int = 50
     title: str | None = None
     user_message_count: int = 0
     title_updated_at_user_message_count: int = 0

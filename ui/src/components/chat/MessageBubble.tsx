@@ -24,6 +24,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             text={message.content}
             reasoning={message.reasoning}
             toolCalls={message.tool_calls}
+            segments={message.segments}
             isStreaming={message.isStreaming}
           />
         )}

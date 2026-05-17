@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     current_request_id TEXT,
     error_message TEXT,
     system_prompt TEXT,
-    max_iterations INTEGER NOT NULL DEFAULT 10,
+    max_iterations INTEGER NOT NULL DEFAULT 50,
     title TEXT,
     user_message_count INTEGER NOT NULL DEFAULT 0,
     title_updated_at_user_message_count INTEGER NOT NULL DEFAULT 0,

@@ -76,7 +76,7 @@ class SessionManager:
 
     async def create_session(
         self,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
         provider_id: str | None = None,
         model_name: str | None = None,
     ) -> SessionInfo:
@@ -240,7 +240,6 @@ class SessionManager:
                     expected_status="idle",
                 )
                 log.debug("Session status changed: idle -> busy")
-                await self.store.save_message(session_id, "user", content)
 
                 messages, region_info = await self._build_messages(
                     session, content, session.model_name
@@ -268,6 +267,7 @@ class SessionManager:
                 )
 
                 accumulated_usage: dict[str, int] = {}
+                user_message_saved = False
 
                 async for event in runner.run_stream(
                     spec,
@@ -275,6 +275,9 @@ class SessionManager:
                     request_id=request_id,
                     cancellation_token=token,
                 ):
+                    if not user_message_saved:
+                        await self.store.save_message(session_id, "user", content)
+                        user_message_saved = True
                     yield event
                     if event.type == "content" and event.text:
                         assistant_chunks.append(event.text)

@@ -14,6 +14,7 @@ EventType = Literal[
     "reasoning",
     "tool_call",
     "tool_result",
+    "iteration_boundary",
     "done",
     "error",
     "cancelled",
@@ -60,6 +61,9 @@ class SSEEvent:
     # cancelled fields
     reason: str | None = None
 
+    # iteration_boundary fields
+    iteration: int | None = None
+
     # ping fields
     timestamp: str | None = None
 
@@ -102,6 +106,10 @@ class SSEEvent:
                 result["usage"] = self.usage
             if self.tools_used is not None:
                 result["tools_used"] = self.tools_used
+
+        elif self.type == "iteration_boundary":
+            if self.iteration is not None:
+                result["iteration"] = self.iteration
 
         elif self.type == "error":
             result["error"] = self.error
@@ -206,6 +214,11 @@ def event_error(
     if details is not None:
         error_obj["details"] = details
     return SSEEvent(type="error", error=error_obj)
+
+
+def event_iteration_boundary(iteration: int) -> SSEEvent:
+    """Create an iteration_boundary event marking a think-tool cycle boundary."""
+    return SSEEvent(type="iteration_boundary", iteration=iteration)
 
 
 def event_cancelled(reason: str | None = None) -> SSEEvent:

@@ -19,7 +19,7 @@ class ErrorResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
-    max_iterations: int = Field(default=10, ge=1)
+    max_iterations: int = Field(default=50, ge=1)
     provider_id: str | None = None
     model_name: str | None = None
 
