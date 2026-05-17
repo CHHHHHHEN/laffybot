@@ -80,6 +80,7 @@ def create_app(
         await memory_manager_obj.initialize()
         yield
         logger.info("Application shutting down")
+        await session_manager_obj.shutdown()
         for obj in (provider_store_obj, store_obj, app_setting_store_obj):
             try:
                 await asyncio.wait_for(obj.close(), timeout=5)
@@ -127,7 +128,7 @@ def create_app(
     async def provider_exception_handler(
         _: Request, exc: ProviderError
     ) -> JSONResponse:
-        return map_provider_error(exc)  # type: ignore[arg-type]
+        return map_provider_error(exc)
 
     @app.exception_handler(ToolError)
     async def tool_exception_handler(_: Request, exc: ToolError) -> JSONResponse:

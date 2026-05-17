@@ -5,12 +5,28 @@ from __future__ import annotations
 from fastapi import Request
 
 from laffybot.agent.tools.registry import ToolRegistry
+from laffybot.api.event_bus import get_event_bus
 from laffybot.config import ApiConfig, ContextConfig
 from laffybot.memory import MemoryConfig, MemoryManager, MemoryStore, SQLiteMemoryStore
+from laffybot.providers.base import BaseProvider
+from laffybot.providers.config import ProviderConfig
+from laffybot.providers.factory import ProviderFactory
+from laffybot.providers.openai import OpenAIProvider
 from laffybot.session.app_setting_store import AppSettingStore, SQLiteAppSettingStore
 from laffybot.session.manager import SessionManager
 from laffybot.session.provider_store import ProviderStore, SQLiteProviderStore
 from laffybot.session.store import SessionStore, SQLiteStore
+
+
+class DefaultProviderFactory:
+    """Concrete provider factory wired to OpenAIProvider.
+
+    Lives in the API layer to keep provider instantiation details out of
+    the session/business-logic layer.
+    """
+
+    async def create_provider(self, config: ProviderConfig) -> BaseProvider:
+        return OpenAIProvider(config)
 
 
 def build_store(config: ApiConfig) -> SessionStore:
@@ -38,16 +54,19 @@ def build_session_manager(
     memory_manager: MemoryManager | None = None,
     max_active_sessions: int = 3,
     tool_timeout_s: int = 120,
+    provider_factory: ProviderFactory | None = None,
 ) -> SessionManager:
     return SessionManager(
         store=store,
         provider_store=provider_store,
         app_setting_store=app_setting_store,
         tool_registry=tool_registry,
+        provider_factory=provider_factory or DefaultProviderFactory(),
         context_config=context_config,
         memory_manager=memory_manager,
         max_active_sessions=max_active_sessions,
         tool_timeout_s=tool_timeout_s,
+        event_publisher=get_event_bus(),
     )
 
 
@@ -89,3 +108,10 @@ def get_memory_store(request: Request) -> MemoryStore | None:
 
 def get_tool_registry(request: Request) -> ToolRegistry:
     return request.app.state.tool_registry  # type: ignore[no-any-return]
+
+
+_provider_factory: ProviderFactory = DefaultProviderFactory()
+
+
+def get_provider_factory() -> ProviderFactory:
+    return _provider_factory

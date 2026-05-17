@@ -9,6 +9,7 @@ import os
 import secrets
 import string
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlparse
@@ -25,11 +26,24 @@ from laffybot.providers.types import (
     ERROR_RATE_LIMIT,
     ERROR_SERVER,
     ERROR_TIMEOUT,
-    LLMResponse,
+    ErrorLLMResponse,
     StreamChunk,
+    SuccessLLMResponse,
     ToolCallDelta,
     ToolCallRequest,
 )
+
+
+@dataclass
+class _RawResponse:
+    """Intermediate representation for parsed LLM response data."""
+
+    content: str | None
+    tool_calls: list[ToolCallRequest]
+    finish_reason: str
+    usage: dict[str, int]
+    reasoning_content: str | None
+
 
 _ALLOWED_MSG_KEYS = frozenset(
     {
@@ -271,20 +285,14 @@ class OpenAIProvider(BaseProvider):
     ) -> list[dict[str, Any]]:
         if not messages:
             return messages
-        result: list[dict[str, Any]] = []
-        for msg in messages:
-            role = msg.get("role")
-            if not result:
-                result.append(msg)
-                continue
-            last_role = result[-1].get("role")
-            if role == last_role and role in ("user", "assistant"):
-                if role == "user":
-                    result.append({"role": "assistant", "content": ""})
-                else:
-                    result.append({"role": "user", "content": ""})
-            result.append(msg)
-        return result
+        for i in range(1, len(messages)):
+            role = messages[i].get("role")
+            prev_role = messages[i - 1].get("role")
+            if role == prev_role and role in ("user", "assistant"):
+                raise ValueError(
+                    f"Consecutive same-role messages: role={role!r} at index {i}"
+                )
+        return messages
 
     @staticmethod
     def _sanitize_empty_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -416,86 +424,90 @@ class OpenAIProvider(BaseProvider):
                 current = getattr(current, segment, None)
         return int(current or 0) if current is not None else 0
 
-    def _parse_response(self, response: Any) -> LLMResponse:
+    def _parse_response(self, response: Any) -> SuccessLLMResponse:
         if isinstance(response, str):
-            return LLMResponse(content=response, finish_reason="stop")
+            return SuccessLLMResponse(content=response, finish_reason="stop")
 
-        response_map = self._maybe_mapping(response)
+        raw = self._extract_to_raw(response)
+        if raw is None:
+            return SuccessLLMResponse(
+                content="Error: API returned empty choices.",
+                finish_reason="error",
+            )
+
+        return SuccessLLMResponse(
+            content=raw.content,
+            tool_calls=raw.tool_calls,
+            finish_reason=raw.finish_reason,
+            usage=raw.usage,
+            reasoning_content=raw.reasoning_content,
+        )
+
+    @classmethod
+    def _extract_to_raw(cls, response: Any) -> _RawResponse | None:
+        response_map = cls._maybe_mapping(response)
         if response_map is not None:
-            choices = response_map.get("choices") or []
-            if not choices:
-                content = self._extract_text_content(
-                    response_map.get("content") or response_map.get("output_text")
-                )
-                reasoning_content = self._extract_text_content(
-                    response_map.get("reasoning_content")
-                )
-                if content is not None:
-                    return LLMResponse(
-                        content=content,
-                        reasoning_content=reasoning_content,
-                        finish_reason=str(response_map.get("finish_reason") or "stop"),
-                        usage=self._extract_usage(response_map),
-                    )
-                return LLMResponse(
-                    content="Error: API returned empty choices.", finish_reason="error"
-                )
+            return cls._extract_from_dict(response_map)
+        return cls._extract_from_sdk(response)
 
-            choice0 = self._maybe_mapping(choices[0]) or {}
-            msg0 = self._maybe_mapping(choice0.get("message")) or {}
-            content = self._extract_text_content(msg0.get("content"))
-            finish_reason = str(choice0.get("finish_reason") or "stop")
-
-            raw_tool_calls: list[Any] = []
-            reasoning_content = msg0.get("reasoning_content")
-            if not reasoning_content and msg0.get("reasoning"):
-                reasoning_content = self._extract_text_content(msg0.get("reasoning"))
-
-            for ch in choices:
-                ch_map = self._maybe_mapping(ch) or {}
-                m = self._maybe_mapping(ch_map.get("message")) or {}
-                tool_calls = m.get("tool_calls")
-                if isinstance(tool_calls, list) and tool_calls:
-                    raw_tool_calls.extend(tool_calls)
-                    if ch_map.get("finish_reason") in ("tool_calls", "stop"):
-                        finish_reason = str(ch_map["finish_reason"])
-                if not content:
-                    content = self._extract_text_content(m.get("content"))
-                if not reasoning_content:
-                    reasoning_content = m.get("reasoning_content")
-
-            parsed_tool_calls = []
-            for tc in raw_tool_calls:
-                tc_map = self._maybe_mapping(tc) or {}
-                fn = self._maybe_mapping(tc_map.get("function")) or {}
-                args = fn.get("arguments", {})
-                if isinstance(args, str):
-                    args = json_repair.loads(args)
-                ec, prov, fn_prov = _extract_tc_extras(tc)
-                parsed_tool_calls.append(
-                    ToolCallRequest(
-                        id=_short_tool_id(),
-                        name=str(fn.get("name") or ""),
-                        arguments=args if isinstance(args, dict) else {},
-                        extra_content=ec,
-                        provider_specific_fields=prov or fn_prov,
-                    )
-                )
-
-            return LLMResponse(
-                content=content,
-                tool_calls=parsed_tool_calls,
-                finish_reason=finish_reason,
-                usage=self._extract_usage(response_map),
-                reasoning_content=reasoning_content
-                if isinstance(reasoning_content, str)
-                else None,
+    @classmethod
+    def _extract_from_dict(cls, response_map: dict[str, Any]) -> _RawResponse | None:
+        choices = response_map.get("choices") or []
+        if not choices:
+            content = cls._extract_text_content(
+                response_map.get("content") or response_map.get("output_text")
             )
+            if content is not None:
+                return _RawResponse(
+                    content=content,
+                    tool_calls=[],
+                    finish_reason=str(response_map.get("finish_reason") or "stop"),
+                    usage=cls._extract_usage(response_map),
+                    reasoning_content=cls._extract_text_content(
+                        response_map.get("reasoning_content")
+                    ),
+                )
+            return None
 
+        choice0 = cls._maybe_mapping(choices[0]) or {}
+        msg0 = cls._maybe_mapping(choice0.get("message")) or {}
+        content = cls._extract_text_content(msg0.get("content"))
+        finish_reason = str(choice0.get("finish_reason") or "stop")
+
+        raw_tool_calls: list[Any] = []
+        reasoning_content = msg0.get("reasoning_content")
+        if not reasoning_content and msg0.get("reasoning"):
+            reasoning_content = cls._extract_text_content(msg0.get("reasoning"))
+
+        for ch in choices:
+            ch_map = cls._maybe_mapping(ch) or {}
+            m = cls._maybe_mapping(ch_map.get("message")) or {}
+            tool_calls = m.get("tool_calls")
+            if isinstance(tool_calls, list) and tool_calls:
+                raw_tool_calls.extend(tool_calls)
+                if ch_map.get("finish_reason") in ("tool_calls", "stop"):
+                    finish_reason = str(ch_map["finish_reason"])
+            if not content:
+                content = cls._extract_text_content(m.get("content"))
+            if not reasoning_content:
+                reasoning_content = m.get("reasoning_content")
+
+        parsed_tool_calls = cls._build_tool_calls(raw_tool_calls)
+
+        return _RawResponse(
+            content=content,
+            tool_calls=parsed_tool_calls,
+            finish_reason=finish_reason,
+            usage=cls._extract_usage(response_map),
+            reasoning_content=reasoning_content
+            if isinstance(reasoning_content, str)
+            else None,
+        )
+
+    @classmethod
+    def _extract_from_sdk(cls, response: Any) -> _RawResponse | None:
         if not response.choices:
-            return LLMResponse(
-                content="Error: API returned empty choices.", finish_reason="error"
-            )
+            return None
 
         choice = response.choices[0]
         msg = choice.message
@@ -512,36 +524,41 @@ class OpenAIProvider(BaseProvider):
             if not content and m.content:
                 content = m.content
 
-        tool_calls = []
-        for tc in sdk_raw_tool_calls:
-            args = tc.function.arguments
+        reasoning_content = getattr(msg, "reasoning_content", None) or None
+        if not reasoning_content and getattr(msg, "reasoning", None):
+            reasoning_content = msg.reasoning
+
+        return _RawResponse(
+            content=content,
+            tool_calls=cls._build_tool_calls(sdk_raw_tool_calls),
+            finish_reason=finish_reason or "stop",
+            usage=cls._extract_usage(response),
+            reasoning_content=reasoning_content,
+        )
+
+    @staticmethod
+    def _build_tool_calls(raw_tool_calls: list[Any]) -> list[ToolCallRequest]:
+        result: list[ToolCallRequest] = []
+        for tc in raw_tool_calls:
+            tc_map = _coerce_dict(tc) or {}
+            fn = _coerce_dict(tc_map.get("function")) or {}
+            args = fn.get("arguments", {})
             if isinstance(args, str):
                 args = json_repair.loads(args)
             ec, prov, fn_prov = _extract_tc_extras(tc)
-            tool_calls.append(
+            result.append(
                 ToolCallRequest(
                     id=_short_tool_id(),
-                    name=tc.function.name,
+                    name=str(fn.get("name") or ""),
                     arguments=args if isinstance(args, dict) else {},
                     extra_content=ec,
                     provider_specific_fields=prov or fn_prov,
                 )
             )
-
-        reasoning_content = getattr(msg, "reasoning_content", None) or None
-        if not reasoning_content and getattr(msg, "reasoning", None):
-            reasoning_content = msg.reasoning
-
-        return LLMResponse(
-            content=content,
-            tool_calls=tool_calls,
-            finish_reason=finish_reason or "stop",
-            usage=self._extract_usage(response),
-            reasoning_content=reasoning_content,
-        )
+        return result
 
     @classmethod
-    def _parse_chunks(cls, chunks: list[Any]) -> LLMResponse:
+    def _parse_chunks(cls, chunks: list[Any]) -> SuccessLLMResponse:
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
         tc_bufs: dict[int, dict[str, Any]] = {}
@@ -633,7 +650,7 @@ class OpenAIProvider(BaseProvider):
             for tc in (delta.tool_calls or []) if delta else []:
                 _accum_tc(tc, getattr(tc, "index", 0))
 
-        return LLMResponse(
+        return SuccessLLMResponse(
             content="".join(content_parts) or None,
             tool_calls=[
                 ToolCallRequest(
@@ -703,7 +720,8 @@ class OpenAIProvider(BaseProvider):
             "error_should_retry": should_retry,
         }
 
-    def _handle_error(self, e: Exception) -> LLMResponse:
+    def _handle_error(self, e: Exception) -> ErrorLLMResponse:
+        meta = self._extract_error_metadata(e)
         body = (
             getattr(e, "doc", None)
             or getattr(e, "body", None)
@@ -724,10 +742,12 @@ class OpenAIProvider(BaseProvider):
                 f"is reachable at {self._api_base}."
             )
 
-        return LLMResponse(
-            content=msg,
+        return ErrorLLMResponse(
             finish_reason="error",
-            **self._extract_error_metadata(e),
+            error_kind=meta.get("error_kind"),
+            error_status_code=meta.get("error_status_code"),
+            error_should_retry=meta.get("error_should_retry"),
+            error_message=msg,
         )
 
     async def chat_completion(
@@ -737,7 +757,7 @@ class OpenAIProvider(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> LLMResponse:
+    ) -> SuccessLLMResponse | ErrorLLMResponse:
         try:
             kwargs = self._build_kwargs(messages, model, tools, temperature, max_tokens)
             response = await self._client.chat.completions.create(**kwargs)
@@ -753,7 +773,7 @@ class OpenAIProvider(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> LLMResponse:
+    ) -> SuccessLLMResponse | ErrorLLMResponse:
         logger.debug("OpenAI stream started: model={}", model)
         idle_timeout_s = _stream_idle_timeout_s()
         try:
@@ -817,10 +837,10 @@ class OpenAIProvider(BaseProvider):
                 model,
                 idle_timeout_s,
             )
-            return LLMResponse(
-                content=f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds",
+            return ErrorLLMResponse(
                 finish_reason="error",
                 error_kind=ERROR_TIMEOUT,
+                error_message=f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds",
             )
         except Exception as e:
             logger.error("OpenAI stream error: model={}, error={}", model, e)

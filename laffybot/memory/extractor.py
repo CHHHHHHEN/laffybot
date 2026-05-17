@@ -8,6 +8,7 @@ from loguru import logger
 
 from laffybot.context.tokens import ApproximateTokenCounter
 from laffybot.memory.prompts import EXTRACT_MEMORY_PROMPT
+from laffybot.providers.types import ErrorLLMResponse
 
 if TYPE_CHECKING:
     from laffybot.providers.base import BaseProvider
@@ -55,7 +56,7 @@ class MemoryExtractor:
                 max_tokens=2000,
             )
 
-            if response.error_kind:
+            if isinstance(response, ErrorLLMResponse):
                 logger.warning(
                     "Memory extraction LLM call failed: error_kind={}",
                     response.error_kind,

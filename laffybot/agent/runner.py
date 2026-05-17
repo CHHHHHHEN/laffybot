@@ -29,7 +29,18 @@ from laffybot.agent.events import (
 from laffybot.agent.tools.errors import ToolError
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.providers.base import BaseProvider
-from laffybot.providers.types import LLMResponse, StreamChunk, ToolCallRequest
+from laffybot.providers.types import (
+    ERROR_INTERNAL as ERROR_INTERNAL_CODE,
+)
+from laffybot.providers.types import (
+    ErrorLLMResponse,
+    StreamChunk,
+    SuccessLLMResponse,
+    ToolCallRequest,
+)
+
+_QUEUE_GET_TIMEOUT_S = 120
+_EMPTY_RESPONSE_THRESHOLD = 3
 
 
 @dataclass(slots=True)
@@ -98,6 +109,8 @@ class AgentRunner:
         # Emit session_start
         yield event_session_start(session_id, request_id)
 
+        empty_response_count = 0
+
         try:
             for iteration in range(spec.max_iterations):
                 # Cancellation checkpoint
@@ -114,12 +127,41 @@ class AgentRunner:
                 )
 
                 while True:
-                    event = await event_queue.get()
+                    try:
+                        event = await asyncio.wait_for(
+                            event_queue.get(), timeout=_QUEUE_GET_TIMEOUT_S
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            "Queue get timed out after {}s on iteration {}",
+                            _QUEUE_GET_TIMEOUT_S,
+                            iteration,
+                        )
+                        yield event_error(
+                            code=ERROR_INTERNAL_CODE,
+                            message=f"Agent queue timed out after {_QUEUE_GET_TIMEOUT_S}s",
+                        )
+                        task.cancel()
+                        response = await task
+                        break
                     if event is None:
                         break
                     yield event
 
                 response = await task
+                if isinstance(response, ErrorLLMResponse):
+                    log.error(
+                        "LLM error response: error_kind={}, message={}",
+                        response.error_kind,
+                        response.error_message,
+                    )
+                    yield event_error(
+                        code=ERROR_LLM,
+                        message=response.error_message or "LLM call failed",
+                    )
+                    stop_reason = "error"
+                    break
+
                 self._accumulate_usage(usage, response.usage)
 
                 log.debug(
@@ -220,12 +262,22 @@ class AgentRunner:
                 # No tool calls - check for final content
                 content = response.content or ""
                 if not content.strip():
+                    empty_response_count += 1
                     logger.warning(
-                        "Empty response on turn {} for model {}",
+                        "Empty response on turn {} for model {} (count={})",
                         iteration,
                         spec.model,
+                        empty_response_count,
                     )
+                    if empty_response_count >= _EMPTY_RESPONSE_THRESHOLD:
+                        yield event_error(
+                            code="EMPTY_RESPONSE",
+                            message=f"LLM returned empty responses {empty_response_count} consecutive times",
+                        )
+                        stop_reason = "error"
+                        break
                     continue
+                empty_response_count = 0
 
                 # Final response
                 messages.append(self._build_assistant_message(content, []))
@@ -233,7 +285,8 @@ class AgentRunner:
 
             else:
                 # Loop exhausted
-                stop_reason = "max_iterations"
+                if stop_reason != "error":
+                    stop_reason = "max_iterations"
 
         except CancelledError as e:
             # Cancellation - emit cancelled event
@@ -269,7 +322,7 @@ class AgentRunner:
         messages: list[dict[str, Any]],
         event_queue: asyncio.Queue[SSEEvent | None],
         cancellation_token: CancellationToken,
-    ) -> LLMResponse:
+    ) -> SuccessLLMResponse | ErrorLLMResponse:
         """Request LLM with streaming, putting content/reasoning events in queue."""
         try:
             cancellation_token.check()

@@ -10,6 +10,7 @@ from loguru import logger
 from laffybot.memory.consolidated_store import ConsolidatedMemoryStore
 from laffybot.memory.prompts import CONSOLIDATE_MEMORY_PROMPT
 from laffybot.memory.store import MemoryStore
+from laffybot.providers.types import ErrorLLMResponse
 
 if TYPE_CHECKING:
     from laffybot.providers.base import BaseProvider
@@ -86,7 +87,7 @@ class MemoryConsolidator:
                 max_tokens=2000,
             )
 
-            if response.error_kind:
+            if isinstance(response, ErrorLLMResponse):
                 logger.warning(
                     "Consolidation LLM call failed: error_kind={}",
                     response.error_kind,

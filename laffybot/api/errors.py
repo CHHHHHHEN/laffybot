@@ -14,6 +14,7 @@ from laffybot.providers.errors import (
     NoActiveProviderError,
     ProviderConfigError,
     ProviderConnectionError,
+    ProviderError,
     ProviderNotFoundError,
 )
 from laffybot.session.errors import (
@@ -100,14 +101,7 @@ def map_session_error(exc: SessionError) -> JSONResponse:
     )
 
 
-def map_provider_error(
-    exc: ProviderNotFoundError
-    | ProviderConnectionError
-    | ProviderConfigError
-    | NoActiveProviderError
-    | ModelNotFoundError
-    | ModelNameConflictError,
-) -> JSONResponse:
+def map_provider_error(exc: ProviderError) -> JSONResponse:
     if isinstance(exc, ProviderNotFoundError):
         return error_response(
             http_status.HTTP_404_NOT_FOUND, "PROVIDER_NOT_FOUND", str(exc)

@@ -10,6 +10,7 @@ from laffybot.config import ContextConfig
 from laffybot.context.tokens import ApproximateTokenCounter
 from laffybot.context.types import RegionInfo
 from laffybot.providers.base import BaseProvider
+from laffybot.providers.types import ErrorLLMResponse
 
 _SUMMARY_SYSTEM_PROMPT = """You are a precise summarizer. Your task is to compress a conversation segment into a structured summary that preserves all critical information for ongoing context.
 
@@ -189,6 +190,13 @@ class LLMSummarizer:
                 model=self._model,
                 temperature=0.3,
             )
+
+            if isinstance(response, ErrorLLMResponse):
+                logger.warning(
+                    "LLM summary generation failed: error_kind={}",
+                    response.error_kind,
+                )
+                return ""
 
             if response.content:
                 return response.content.strip()

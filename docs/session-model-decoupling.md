@@ -2,7 +2,7 @@
 
 > **文档性质**：设计文档  
 > **最后更新**：2026-05-14  
-> **实现状态**：待实现  
+> **实现状态**：已实现  
 > **模拟验证**：2026-05-14  
 > **模拟结论**：计划可行，详见下方各节补充
 
@@ -151,7 +151,7 @@ sessions 表：
 
 `send_message()` 是 async generator，`ProviderNotFoundError` 和 `ModelNotFoundError` 在 lock 块内、try 块外抛出，不会进入 `except Exception` 分支。
 
-**实现要求**：将 `send_message()` 中 provider resolution（`get_provider_config` + model 校验）移至 `try` 块内，或将这两个异常加入 `try/except` 保护范围。同时在 `_stream_session_events()`（`laffybot/api/routes.py`）中新增 `except ProviderNotFoundError` 和 `except ModelNotFoundError` 的捕获，将它们映射为 SSE error event 而非 500 崩溃。映射规则：
+**实现要求**：将 `send_message()` 中 provider resolution（`get_provider_config` + model 校验）移至 `try` 块内，或将这两个异常加入 `try/except` 保护范围。同时在 `_stream_session_events()`（`laffybot/api/session_routes.py`）中新增 `except ProviderNotFoundError` 和 `except ModelNotFoundError` 的捕获，将它们映射为 SSE error event 而非 500 崩溃。映射规则：
 
 | 异常类型 | SSE error code | 行为 |
 |----------|---------------|------|
@@ -296,7 +296,7 @@ class SessionManager:
 | 修改 | `SessionBase`：`model: str` → `provider_id: str`、`model_name: str` |
 | 新增 | `SessionModelUpdateRequest`：字段 `provider_id: str`、`model_name: str` |
 
-|laffybot/api/routes.py||
+|laffybot/api/session_routes.py||
 |--|--|
 | 移除 | import `ActiveSelectionResponse`、`ActiveSelectionUpdateRequest` |
 | 移除 | GET `/providers/active` 路由处理函数 |

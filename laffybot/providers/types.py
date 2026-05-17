@@ -6,6 +6,8 @@ ERROR_CONNECTION = "connection"
 ERROR_RATE_LIMIT = "rate_limit"
 ERROR_SERVER = "server"
 
+ERROR_INTERNAL = "internal"
+
 
 @dataclass
 class ToolCallRequest:
@@ -18,15 +20,33 @@ class ToolCallRequest:
 
 @dataclass
 class LLMResponse:
-    content: str | None
-    tool_calls: list[ToolCallRequest] = field(default_factory=list)
+    """Base LLM response."""
+
     finish_reason: str = "stop"
-    usage: dict[str, int] = field(default_factory=dict)
     reasoning_content: str | None = None
 
-    error_status_code: int | None = None
+
+@dataclass
+class SuccessLLMResponse(LLMResponse):
+    """Successful LLM response with content and/or tool calls."""
+
+    content: str | None = None
+    tool_calls: list[ToolCallRequest] = field(default_factory=list)
+    usage: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
+class ErrorLLMResponse(LLMResponse):
+    """Error LLM response from provider."""
+
     error_kind: str | None = None
+    error_status_code: int | None = None
     error_should_retry: bool | None = None
+    error_message: str | None = None
+
+
+# Backwards-compatible type alias
+AnyLLMResponse = SuccessLLMResponse | ErrorLLMResponse
 
 
 @dataclass(slots=True)

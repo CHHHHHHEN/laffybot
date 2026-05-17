@@ -6,11 +6,11 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const url = `${BASE_URL}${endpoint}`
   const response = await fetch(url, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
     },
-    ...options,
   })
 
   if (!response.ok) {
@@ -134,8 +134,8 @@ export function sendMessage(sessionId: string, content: string): Promise<SendMes
   })
 }
 
-export function getHistory(sessionId: string, limit = 50) {
-  return apiRequest<HistoryResponse>(`/api/v1/sessions/${sessionId}/history?limit=${limit}`)
+export function getHistory(sessionId: string, limit = 50, signal?: AbortSignal) {
+  return apiRequest<HistoryResponse>(`/api/v1/sessions/${sessionId}/history?limit=${limit}`, { signal })
 }
 
 /* ---- Cancel API ---- */

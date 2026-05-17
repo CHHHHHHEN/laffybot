@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any
 
 from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ContextConfig(BaseModel):
@@ -94,8 +96,10 @@ You are a helpful assistant.""",
     )
 
 
-class ApiConfig(BaseModel):
+class ApiConfig(BaseSettings):
     """HTTP API configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="LAFFYBOT_")
 
     database_path: str = Field(
         default="laffybot.db",
@@ -123,6 +127,14 @@ class ApiConfig(BaseModel):
 
     @classmethod
     def from_json(cls, path: str) -> ApiConfig:
-        with open(path) as f:
-            data = json.load(f)
+        try:
+            with open(path) as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            print(f"Error: Config file not found: {path}")
+            sys.exit(1)
+        except json.JSONDecodeError as exc:
+            print(f"Error: Config file is not valid JSON: {path}")
+            print(f"  {exc.msg} (line {exc.lineno}, column {exc.colno})")
+            sys.exit(1)
         return cls(**data)

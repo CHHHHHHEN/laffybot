@@ -79,16 +79,13 @@ class ToolRegistry:
         if self._cached_definitions is not None:
             return self._cached_definitions
 
-        definitions = [
-            tool.to_schema()
-            for name, tool in self._tools.items()
-            if name not in self._disabled
-        ]
         builtins: list[dict[str, Any]] = []
         mcp_tools: list[dict[str, Any]] = []
-        for schema in definitions:
-            name = self._schema_name(schema)
-            if name.startswith("mcp_"):
+        for name, tool in self._tools.items():
+            if name in self._disabled:
+                continue
+            schema = tool.to_schema()
+            if getattr(tool, "kind", "builtin") == "mcp":
                 mcp_tools.append(schema)
             else:
                 builtins.append(schema)
@@ -142,7 +139,8 @@ class ToolRegistry:
             return error + _hint
 
         try:
-            assert tool is not None
+            if tool is None:
+                return f"Error: Tool '{name}' not found after preparation" + _hint
             result = await tool.execute(**params)
             if isinstance(result, str) and result.startswith("Error"):
                 return result + _hint

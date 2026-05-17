@@ -33,7 +33,7 @@
 | Rollout 概念 | 映射为 Session。取 Session 的消息历史作为提取源，不做跨 Rollout 检索 |
 | 并行 Phase 1 提取 | 简化为串行：单个 Session 完成后提取，不做批量并行 |
 | Git 工作区基线 | 简化为文件修改时间戳。以文件最后修改时间判断是否需要重新整合 |
-| MCP 服务器 | 适配为 HTTP API 端点，挂载到 `laffybot/api/routes.py` 对应路由组下 |
+| MCP 服务器 | 适配为 HTTP API 端点，挂载到 `laffybot/api/session_routes.py` 对应路由组下 |
 | 开发指令注入（memory_summary 自动注入） | 通过 ContextBuilder 的系统提示模板变量注入 |
 | 渐进式披露 | 分两步实现：Phase 3 全量注入摘要，Phase 4 优化为按需搜索 |
 | 租约机制 | 无需租约。单实例串行处理无需分布式锁 |

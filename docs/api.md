@@ -213,7 +213,7 @@ data: {"type": "done", "stop_reason": "completed", "usage": {"prompt_tokens": 15
 
 > **注意:** `reasoning` 事件由后端统一处理不同 LLM 提供商的思维链格式差异（如 DeepSeek 的 `reasoning_content` 字段），对外暴露统一的事件格式，客户端无需关心底层实现细节。
 
-> **当前代码注记：** `laffybot/agent/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，但现有 `/sessions/{session_id}/messages` SSE 路径尚未接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
+> **当前代码注记：** `laffybot/agent/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，`/sessions/{session_id}/messages` SSE 路径已通过 `HeartbeatManager.wait_for_ping()` 接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
 
 **实现说明：**
 
@@ -234,7 +234,7 @@ data: {"type": "done", "stop_reason": "completed", "usage": {"prompt_tokens": 15
 > 3. **Phase 3 - 取消与错误处理** ✅：
 >    - 支持 `error` 与 `cancelled` 事件
 >    - 支持 `CancellationToken` 取消链路
->    - `ping` / `HeartbeatManager` 已实现为独立模块，但尚未接入当前 SSE 路径
+>    - `ping` / `HeartbeatManager` 已实现为独立模块，并通过 `wait_for_ping()` 接入 SSE 路径
 
 **stop_reason 取值:**
 - `completed`: 正常完成

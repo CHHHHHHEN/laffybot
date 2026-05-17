@@ -44,17 +44,22 @@ export function ChatPage() {
   useEffect(() => {
     if (!sessionId) return
 
+    const abortController = new AbortController()
     const store = useChatStore.getState()
 
     // Update active session ID
     store.setActiveSessionId(sessionId)
+
+    // Reset tool call counts for the new session
+    boundaryToolCallCounts.current = {}
 
     // Lazy load history if not already loaded
     if (!store.hasLoadedHistory(sessionId)) {
       const loadHistory = async () => {
         try {
           store.setSessionConnectionStatus(sessionId, 'connecting')
-          const history = await getHistory(sessionId)
+          const history = await getHistory(sessionId, 50, abortController.signal)
+          if (abortController.signal.aborted) return
           store.setSessionMessages(
             sessionId,
             history.messages.map((m, i) => ({
@@ -67,10 +72,15 @@ export function ChatPage() {
           store.setSessionConnectionStatus(sessionId, 'disconnected')
           store.markHistoryLoaded(sessionId)
         } catch {
+          if (abortController.signal.aborted) return
           store.setSessionConnectionStatus(sessionId, 'error')
         }
       }
       loadHistory()
+    }
+
+    return () => {
+      abortController.abort()
     }
   }, [sessionId])
 
@@ -249,6 +259,12 @@ export function ChatPage() {
         store.stopStreaming(currentSessionId)
         store.setSessionRequestId(currentSessionId, null)
         store.updateSessionLastMessage(currentSessionId, { isError: true, isStreaming: false })
+      } finally {
+        if (store.isSessionStreaming(currentSessionId)) {
+          store.setSessionConnectionStatus(currentSessionId, 'disconnected')
+          store.stopStreaming(currentSessionId)
+          store.setSessionRequestId(currentSessionId, null)
+        }
       }
     },
     [sessionId, handleSseEvent, createSession, navigate]

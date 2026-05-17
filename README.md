@@ -32,7 +32,11 @@ laffybot/
 │   │
 │   ├── api/                     # HTTP API 层
 │   │   ├── app.py               # FastAPI 应用工厂 + lifespan
-│   │   ├── routes.py            # 所有 API 路由定义
+│   │   ├── routes.py            # 路由聚合器（导入 4 个子模块）
+│   │   ├── session_routes.py    # 会话/设置/记忆路由
+│   │   ├── provider_routes.py   # 提供商路由
+│   │   ├── tool_routes.py       # 工具管理路由
+│   │   ├── health_routes.py     # 健康检查路由
 │   │   ├── schemas.py           # 请求/响应 Pydantic Schema
 │   │   ├── dependencies.py      # 依赖注入（factory, store 构建）
 │   │   └── errors.py            # 领域异常 → HTTP 响应映射
@@ -247,7 +251,8 @@ idle ──(发送消息)──→ busy ──(完成)──→ idle
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | session_id | str | UUID 主键 |
-| model | str | LLM 模型标识 |
+| provider_id | str | 提供商 ID |
+| model_name | str | LLM 模型标识 |
 | status | idle/busy/error | 会话状态 |
 | created_at / updated_at | datetime | 时间戳 |
 | message_count | int | 消息数（冗余字段） |
@@ -376,7 +381,7 @@ AppShell
 2. **SessionManager 单例 + AgentRunner 按需创建**: 会话协调全局共享，执行器轻量按请求创建
 3. **ContextBuilder 依赖注入**: 支持不同的上下文构建策略
 4. **ProviderStore 运行时配置**: 提供商配置存储在数据库，API Key 加密保存，运行时实时读取和解密
-5. **会话与提供商解耦**: model 字段作为创建快照，运行时模型由全局选中决定
+5. **会话与提供商解耦**: provider_id / model_name 作为创建快照，运行时通过 AppSettingStore 配置默认模型，per-session 可覆盖
 6. **乐观锁 + asyncio.Lock 双重保护**: 应用层锁 + 数据库乐观锁
 
 ### 5.2 功能方面

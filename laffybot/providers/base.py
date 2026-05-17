@@ -2,7 +2,11 @@ from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Callable
 
 from laffybot.providers.config import ProviderConfig
-from laffybot.providers.types import LLMResponse, StreamChunk
+from laffybot.providers.types import (
+    ErrorLLMResponse,
+    StreamChunk,
+    SuccessLLMResponse,
+)
 
 
 class BaseProvider(ABC):
@@ -17,7 +21,7 @@ class BaseProvider(ABC):
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> LLMResponse: ...
+    ) -> SuccessLLMResponse | ErrorLLMResponse: ...
 
     @abstractmethod
     async def chat_completion_stream(
@@ -28,4 +32,4 @@ class BaseProvider(ABC):
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-    ) -> LLMResponse: ...
+    ) -> SuccessLLMResponse | ErrorLLMResponse: ...

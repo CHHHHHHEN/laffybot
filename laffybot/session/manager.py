@@ -19,7 +19,7 @@ from laffybot.context import ContextBuilder, LLMSummarizer, SimpleContextBuilder
 from laffybot.context.types import RegionInfo
 from laffybot.memory import MemoryManager
 from laffybot.providers.errors import ModelNotFoundError, ProviderNotFoundError
-from laffybot.providers.openai import OpenAIProvider
+from laffybot.providers.factory import ProviderFactory
 from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionAlreadyArchivedError,
@@ -27,6 +27,7 @@ from laffybot.session.errors import (
     SessionNotArchivedError,
     SessionNotBusyError,
 )
+from laffybot.session.interfaces import EventPublisher
 from laffybot.session.models import SessionInfo, SessionStatus
 from laffybot.session.provider_store import ProviderStore
 from laffybot.session.store import SessionStore
@@ -41,11 +42,13 @@ class SessionManager:
         provider_store: ProviderStore,
         app_setting_store: AppSettingStore,
         tool_registry: ToolRegistry,
+        provider_factory: ProviderFactory,
         context_config: ContextConfig | None = None,
         context_builder: ContextBuilder | None = None,
         memory_manager: MemoryManager | None = None,
         max_active_sessions: int = 3,
         tool_timeout_s: int = 120,
+        event_publisher: EventPublisher | None = None,
     ) -> None:
         self.store = store
         self.provider_store = provider_store
@@ -56,6 +59,9 @@ class SessionManager:
         self.tool_timeout_s = tool_timeout_s
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
+        self._event_publisher = event_publisher
+        self._provider_factory = provider_factory
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         if context_builder is not None:
             self._context_builder = context_builder
@@ -69,6 +75,16 @@ class SessionManager:
             lock = asyncio.Lock()
             self._locks[session_id] = lock
         return lock
+
+    def _create_task(self, coro: Any) -> asyncio.Task[Any]:
+        task = asyncio.create_task(coro)
+        task.add_done_callback(self._background_tasks.discard)
+        self._background_tasks.add(task)
+        return task
+
+    async def shutdown(self) -> None:
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
     @staticmethod
     def _request_id() -> str:
@@ -110,7 +126,7 @@ class SessionManager:
             provider_id,
             model_name,
         )
-        asyncio.create_task(self._auto_archive_excess_sessions())
+        self._create_task(self._auto_archive_excess_sessions())
         return session
 
     async def get_session_info(self, session_id: str) -> SessionInfo:
@@ -144,6 +160,7 @@ class SessionManager:
         if session.status == "busy":
             raise SessionBusyError(session_id, session.current_request_id)
         await self.store.delete_session(session_id)
+        self._locks.pop(session_id, None)
         logger.info("Session deleted: session_id={}", session_id)
 
     async def archive_session(self, session_id: str) -> SessionInfo:
@@ -159,7 +176,7 @@ class SessionManager:
                 raise SessionAlreadyArchivedError(session_id)
             archived = await self.store.archive_session(session_id)
 
-        asyncio.create_task(self._trigger_extract(session_id))
+        self._create_task(self._trigger_extract(session_id))
 
         return archived
 
@@ -189,20 +206,22 @@ class SessionManager:
             logger.warning("Auto-archive failed", exc_info=True)
 
     async def cancel_request(self, session_id: str, reason: str | None = None) -> str:
-        session = await self.store.get_session(session_id)
-        if session.status != "busy":
-            raise SessionNotBusyError(session_id)
-        token = self._active_tokens.get(session_id)
-        if token is None:
-            raise SessionNotBusyError(session_id)
-        token.cancel(reason)
-        logger.warning(
-            "Request cancelled: session_id={}, request_id={}, reason={}",
-            session_id,
-            session.current_request_id,
-            reason,
-        )
-        return session.current_request_id or ""
+        lock = self._lock_for(session_id)
+        async with lock:
+            session = await self.store.get_session(session_id)
+            if session.status != "busy":
+                raise SessionNotBusyError(session_id)
+            token = self._active_tokens.get(session_id)
+            if token is None:
+                raise SessionNotBusyError(session_id)
+            token.cancel(reason)
+            logger.warning(
+                "Request cancelled: session_id={}, request_id={}, reason={}",
+                session_id,
+                session.current_request_id,
+                reason,
+            )
+            return session.current_request_id or ""
 
     async def send_message(
         self,
@@ -218,146 +237,145 @@ class SessionManager:
             request_id = self._request_id()
             token = CancellationToken()
             self._active_tokens[session_id] = token
-            assistant_chunks: list[str] = []
-            response_status: SessionStatus = "idle"
-            error_message: str | None = None
 
-            log = logger.bind(session_id=session_id, request_id=request_id)
-            log.info("Message send started: content_len={}", len(content))
+            await self.store.update_session_status(
+                session_id,
+                "busy",
+                current_request_id=request_id,
+                expected_status="idle",
+            )
 
-            try:
-                provider_config = await self.provider_store.get_provider_config(
-                    session.provider_id
+        assistant_chunks: list[str] = []
+        response_status: SessionStatus = "idle"
+        error_message: str | None = None
+
+        log = logger.bind(session_id=session_id, request_id=request_id)
+        log.info("Message send started: content_len={}", len(content))
+        log.debug("Session status changed: idle -> busy")
+
+        try:
+            provider_config = await self.provider_store.get_provider_config(
+                session.provider_id
+            )
+            models = await self.provider_store.list_models(session.provider_id)
+            if not any(m.name == session.model_name for m in models):
+                raise ModelNotFoundError(session.model_name)
+
+            messages, region_info = await self._build_messages(
+                session, content, session.model_name
+            )
+            provider = await self._provider_factory.create_provider(provider_config)
+
+            if region_info is not None:
+                compress_model = (
+                    self._context_builder.config.compress_model or session.model_name
                 )
-                models = await self.provider_store.list_models(session.provider_id)
-                if not any(m.name == session.model_name for m in models):
-                    raise ModelNotFoundError(session.model_name)
-
-                await self.store.update_session_status(
-                    session_id,
-                    "busy",
-                    current_request_id=request_id,
-                    expected_status="idle",
+                summarizer = LLMSummarizer(provider, compress_model)
+                self._create_task(
+                    self._fire_summary_and_replace(session_id, region_info, summarizer)
                 )
-                log.debug("Session status changed: idle -> busy")
+            runner = AgentRunner(provider)
+            spec = AgentRunSpec(
+                initial_messages=messages,
+                tools=self.tool_registry,
+                model=session.model_name,
+                max_iterations=session.max_iterations,
+                tool_timeout_s=self.tool_timeout_s,
+            )
 
-                messages, region_info = await self._build_messages(
-                    session, content, session.model_name
-                )
-                provider = OpenAIProvider(provider_config)
+            accumulated_usage: dict[str, int] = {}
+            user_message_saved = False
 
-                if region_info is not None:
-                    compress_model = (
-                        self._context_builder.config.compress_model
-                        or session.model_name
-                    )
-                    summarizer = LLMSummarizer(provider, compress_model)
-                    asyncio.create_task(
-                        self._fire_summary_and_replace(
-                            session_id, region_info, summarizer
-                        )
-                    )
-                runner = AgentRunner(provider)
-                spec = AgentRunSpec(
-                    initial_messages=messages,
-                    tools=self.tool_registry,
-                    model=session.model_name,
-                    max_iterations=session.max_iterations,
-                    tool_timeout_s=self.tool_timeout_s,
-                )
-
-                accumulated_usage: dict[str, int] = {}
-                user_message_saved = False
-
-                async for event in runner.run_stream(
-                    spec,
-                    session_id=session_id,
-                    request_id=request_id,
-                    cancellation_token=token,
-                ):
-                    if not user_message_saved:
-                        await self.store.save_message(session_id, "user", content)
-                        user_message_saved = True
-                    yield event
-                    if event.type == "content" and event.text:
-                        assistant_chunks.append(event.text)
-                    elif event.type == "error":
+            async for event in runner.run_stream(
+                spec,
+                session_id=session_id,
+                request_id=request_id,
+                cancellation_token=token,
+            ):
+                if not user_message_saved:
+                    await self.store.save_message(session_id, "user", content)
+                    user_message_saved = True
+                yield event
+                if event.type == "content" and event.text:
+                    assistant_chunks.append(event.text)
+                elif event.type == "error":
+                    response_status = "error"
+                    error_message = self._extract_error_message(event.error)
+                elif event.type == "cancelled":
+                    response_status = "idle"
+                    error_message = None
+                elif event.type == "done":
+                    if event.stop_reason == "error":
                         response_status = "error"
-                        error_message = self._extract_error_message(event.error)
-                    elif event.type == "cancelled":
+                    else:
                         response_status = "idle"
-                        error_message = None
-                    elif event.type == "done":
-                        if event.stop_reason == "error":
-                            response_status = "error"
-                        else:
-                            response_status = "idle"
-                        if event.usage:
-                            accumulated_usage = event.usage
-                        if response_status == "idle" and assistant_chunks:
-                            input_tokens = accumulated_usage.get("prompt_tokens")
-                            output_tokens = accumulated_usage.get("completion_tokens")
-                            await self.store.save_message(
-                                session_id,
-                                "assistant",
-                                "".join(assistant_chunks),
-                                input_tokens=input_tokens,
-                                output_tokens=output_tokens,
-                            )
-                        await self.store.update_session_status(
+                    if event.usage:
+                        accumulated_usage = event.usage
+                    if response_status == "idle" and assistant_chunks:
+                        input_tokens = accumulated_usage.get("prompt_tokens")
+                        output_tokens = accumulated_usage.get("completion_tokens")
+                        await self.store.save_message(
                             session_id,
-                            response_status,
-                            current_request_id=None,
-                            error_message=error_message,
-                            expected_status="busy",
+                            "assistant",
+                            "".join(assistant_chunks),
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
                         )
-                        # Trigger auto-title generation asynchronously
-                        if response_status == "idle" and assistant_chunks:
-                            asyncio.create_task(self._trigger_auto_title(session_id))
-                        break
-            except ProviderNotFoundError as exc:
-                log.error("Provider not found: {}", exc)
-                yield event_error(
-                    code="PROVIDER_NOT_FOUND",
-                    message=str(exc),
-                )
-            except ModelNotFoundError as exc:
-                log.error("Model not found: {}", exc)
-                yield event_error(
-                    code="MODEL_NOT_FOUND",
-                    message=str(exc),
-                )
-            except CancelledError as exc:
-                log.warning("Message send cancelled: reason={}", exc.reason)
-                await self.store.update_session_status(
-                    session_id,
-                    "idle",
-                    current_request_id=None,
-                    error_message=None,
-                    expected_status="busy",
-                )
-                yield event_error(
-                    code="CANCELLED",
-                    message=str(exc),
-                    details={"reason": exc.reason} if exc.reason else None,
-                )
-            except Exception as exc:
-                log.error("Message send failed: error={}", exc)
-                await self.store.update_session_status(
-                    session_id,
-                    "error",
-                    current_request_id=None,
-                    error_message=str(exc),
-                    expected_status="busy",
-                )
-                yield event_error(
-                    code="INTERNAL_ERROR",
-                    message=str(exc),
-                    details={"error_type": type(exc).__name__},
-                )
-            finally:
-                self._active_tokens.pop(session_id, None)
-                try:
+                    await self.store.update_session_status(
+                        session_id,
+                        response_status,
+                        current_request_id=None,
+                        error_message=error_message,
+                        expected_status="busy",
+                    )
+                    # Trigger auto-title generation asynchronously
+                    if response_status == "idle" and assistant_chunks:
+                        self._create_task(self._trigger_auto_title(session_id))
+                    break
+        except ProviderNotFoundError as exc:
+            log.error("Provider not found: {}", exc)
+            yield event_error(
+                code="PROVIDER_NOT_FOUND",
+                message=str(exc),
+            )
+        except ModelNotFoundError as exc:
+            log.error("Model not found: {}", exc)
+            yield event_error(
+                code="MODEL_NOT_FOUND",
+                message=str(exc),
+            )
+        except CancelledError as exc:
+            log.warning("Message send cancelled: reason={}", exc.reason)
+            await self.store.update_session_status(
+                session_id,
+                "idle",
+                current_request_id=None,
+                error_message=None,
+                expected_status="busy",
+            )
+            yield event_error(
+                code="CANCELLED",
+                message=str(exc),
+                details={"reason": exc.reason} if exc.reason else None,
+            )
+        except Exception as exc:
+            log.error("Message send failed: error={}", exc)
+            await self.store.update_session_status(
+                session_id,
+                "error",
+                current_request_id=None,
+                error_message=str(exc),
+                expected_status="busy",
+            )
+            yield event_error(
+                code="INTERNAL_ERROR",
+                message=str(exc),
+                details={"error_type": type(exc).__name__},
+            )
+        finally:
+            self._active_tokens.pop(session_id, None)
+            try:
+                async with lock:
                     current = await self.store.get_session(session_id)
                     if current.status == "busy":
                         await self.store.update_session_status(
@@ -366,8 +384,8 @@ class SessionManager:
                             current_request_id=None,
                             error_message="Session interrupted unexpectedly",
                         )
-                except Exception:
-                    logger.exception("Failed to reset stuck busy session")
+            except Exception:
+                logger.exception("Failed to reset stuck busy session")
 
     async def update_session_model(
         self,
@@ -533,12 +551,8 @@ class SessionManager:
                             session.user_message_count,
                             False,  # expected_title_auto_generated
                         )
-                        if success:
-                            # Publish title_update event for fallback title
-                            from laffybot.api.event_bus import get_event_bus
-
-                            bus = get_event_bus()
-                            await bus.publish(
+                        if success and self._event_publisher is not None:
+                            await self._event_publisher.publish(
                                 "title_update",
                                 {"session_id": session_id, "title": title},
                             )
@@ -548,7 +562,7 @@ class SessionManager:
             provider_config = await self.provider_store.get_provider_config(
                 summary_config.provider_id
             )
-            provider = OpenAIProvider(provider_config)
+            provider = await self._provider_factory.create_provider(provider_config)
             generator = TitleGenerator(provider, summary_config.model_name)
 
             # Get all messages for context
@@ -574,14 +588,11 @@ class SessionManager:
                     session_id,
                     generated_title,
                 )
-                # Publish title_update event to global event bus
-                from laffybot.api.event_bus import get_event_bus
-
-                bus = get_event_bus()
-                await bus.publish(
-                    "title_update",
-                    {"session_id": session_id, "title": generated_title},
-                )
+                if self._event_publisher is not None:
+                    await self._event_publisher.publish(
+                        "title_update",
+                        {"session_id": session_id, "title": generated_title},
+                    )
             else:
                 logger.debug(
                     "Auto-title write skipped (optimistic lock): session_id={}",
@@ -616,7 +627,7 @@ class SessionManager:
             provider_config = await self.provider_store.get_provider_config(
                 extract_config.provider_id
             )
-            provider = OpenAIProvider(provider_config)
+            provider = await self._provider_factory.create_provider(provider_config)
 
             await self.memory_manager.extract(
                 session_id=session_id,

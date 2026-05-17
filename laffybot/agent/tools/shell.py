@@ -147,9 +147,9 @@ class ExecTool(Tool):
             if _IS_WINDOWS:
                 env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
             else:
-                env["NANOBOT_PATH_APPEND"] = self.path_append
+                env["LAFFYBOT_PATH_APPEND"] = self.path_append
                 command = (
-                    f'export PATH="$PATH{os.pathsep}$NANOBOT_PATH_APPEND"; {command}'
+                    f'export PATH="$PATH{os.pathsep}$LAFFYBOT_PATH_APPEND"; {command}'
                 )
 
         try:

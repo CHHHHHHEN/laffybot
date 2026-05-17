@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
 from pydantic.type_adapter import TypeAdapter
@@ -22,6 +22,8 @@ class Tool(ABC):
     """
 
     _param_model: type[BaseModel] | None = None
+
+    kind: Literal["builtin", "mcp"] = "builtin"
 
     @property
     @abstractmethod

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from laffybot.providers.types import ErrorLLMResponse
+
 if TYPE_CHECKING:
     from laffybot.providers.base import BaseProvider
 
@@ -58,7 +60,7 @@ class TitleGenerator:
                 max_tokens=50,
             )
 
-            if response.error_kind:
+            if isinstance(response, ErrorLLMResponse):
                 logger.warning(
                     "Title generation failed: error_kind={}",
                     response.error_kind,
