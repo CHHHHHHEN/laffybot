@@ -49,6 +49,7 @@ export interface SessionResponse {
   created_at: string
   message_count?: number
   title?: string | null
+  archived_at: string | null
 }
 
 export interface ListSessionsResponse {
@@ -69,13 +70,26 @@ export function getSession(sessionId: string) {
   return apiRequest<SessionResponse>(`/api/v1/sessions/${sessionId}`)
 }
 
-export function listSessions(params?: { limit?: number; offset?: number; status?: string }) {
+export function listSessions(params?: { limit?: number; offset?: number; status?: string; archived?: boolean }) {
   const query = new URLSearchParams()
   if (params?.limit) query.set('limit', String(params.limit))
   if (params?.offset) query.set('offset', String(params.offset))
   if (params?.status) query.set('status', params.status)
+  if (params?.archived !== undefined) query.set('archived', String(params.archived))
   const qs = query.toString()
   return apiRequest<ListSessionsResponse>(`/api/v1/sessions${qs ? `?${qs}` : ''}`)
+}
+
+export function archiveSession(sessionId: string) {
+  return apiRequest<SessionResponse>(`/api/v1/sessions/${sessionId}/archive`, {
+    method: 'POST',
+  })
+}
+
+export function unarchiveSession(sessionId: string) {
+  return apiRequest<SessionResponse>(`/api/v1/sessions/${sessionId}/unarchive`, {
+    method: 'POST',
+  })
 }
 
 export function deleteSession(sessionId: string) {

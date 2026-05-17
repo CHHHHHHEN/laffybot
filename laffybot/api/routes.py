@@ -303,6 +303,15 @@ async def archive_session(
     return _serialize_session_detail(session)
 
 
+@router.post("/sessions/{session_id}/unarchive", response_model=SessionDetailResponse)
+async def unarchive_session(
+    session_id: str,
+    manager: SessionManager = Depends(get_session_manager),
+) -> dict[str, object]:
+    session = await manager.unarchive_session(session_id)
+    return _serialize_session_detail(session)
+
+
 @router.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
 async def delete_session(
     session_id: str,

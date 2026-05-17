@@ -24,6 +24,7 @@ from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionAlreadyArchivedError,
     SessionBusyError,
+    SessionNotArchivedError,
     SessionNotBusyError,
 )
 from laffybot.session.models import SessionInfo, SessionStatus
@@ -43,12 +44,14 @@ class SessionManager:
         context_config: ContextConfig | None = None,
         context_builder: ContextBuilder | None = None,
         memory_manager: MemoryManager | None = None,
+        max_active_sessions: int = 3,
     ) -> None:
         self.store = store
         self.provider_store = provider_store
         self.app_setting_store = app_setting_store
         self.tool_registry = tool_registry
         self.memory_manager = memory_manager
+        self.max_active_sessions = max_active_sessions
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
 
@@ -105,6 +108,7 @@ class SessionManager:
             provider_id,
             model_name,
         )
+        asyncio.create_task(self._auto_archive_excess_sessions())
         return session
 
     async def get_session_info(self, session_id: str) -> SessionInfo:
@@ -116,9 +120,14 @@ class SessionManager:
         archived: bool | None = None,
         limit: int = 20,
         offset: int = 0,
+        order_by_asc: bool = False,
     ) -> tuple[list[SessionInfo], int]:
         return await self.store.list_sessions(
-            status=status, archived=archived, limit=limit, offset=offset
+            status=status,
+            archived=archived,
+            limit=limit,
+            offset=offset,
+            order_by_asc=order_by_asc,
         )
 
     async def get_session_history(
@@ -136,18 +145,46 @@ class SessionManager:
         logger.info("Session deleted: session_id={}", session_id)
 
     async def archive_session(self, session_id: str) -> SessionInfo:
-        """Archive a session and trigger memory extraction."""
-        session = await self.store.get_session(session_id)
-        if session.status == "busy":
-            raise SessionBusyError(session_id, session.current_request_id)
-        if session.archived_at is not None:
-            raise SessionAlreadyArchivedError(session_id)
+        """Archive a session and trigger memory extraction.
 
-        archived = await self.store.archive_session(session_id)
+        If the session is busy (streaming), waits for the stream to complete
+        before archiving.
+        """
+        lock = self._lock_for(session_id)
+        async with lock:
+            session = await self.store.get_session(session_id)
+            if session.archived_at is not None:
+                raise SessionAlreadyArchivedError(session_id)
+            archived = await self.store.archive_session(session_id)
 
         asyncio.create_task(self._trigger_extract(session_id))
 
         return archived
+
+    async def unarchive_session(self, session_id: str) -> SessionInfo:
+        """Unarchive a session, setting archived_at to NULL."""
+        session = await self.store.get_session(session_id)
+        if session.status == "busy":
+            raise SessionBusyError(session_id, session.current_request_id)
+        if session.archived_at is None:
+            raise SessionNotArchivedError(session_id)
+        return await self.store.unarchive_session(session_id)
+
+    async def _auto_archive_excess_sessions(self) -> None:
+        """Check if active sessions exceed the limit and archive the oldest."""
+        try:
+            _, total = await self.store.list_sessions(archived=False, limit=1, offset=0)
+            if total <= self.max_active_sessions:
+                return
+
+            excess = total - self.max_active_sessions
+            oldest, _ = await self.store.list_sessions(
+                archived=False, limit=excess, offset=0, order_by_asc=True
+            )
+            for session in oldest:
+                await self.archive_session(session.session_id)
+        except Exception:
+            logger.warning("Auto-archive failed", exc_info=True)
 
     async def cancel_request(self, session_id: str, reason: str | None = None) -> str:
         session = await self.store.get_session(session_id)

@@ -69,6 +69,7 @@ def create_app(
         tool_registry=tool_registry_obj,
         context_config=context_config,
         memory_manager=memory_manager_obj,
+        max_active_sessions=config.max_active_sessions,
     )
 
     @asynccontextmanager

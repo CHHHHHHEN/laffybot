@@ -2,17 +2,22 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUiStore } from '@/stores/ui-store'
 import { NavLinks } from './NavLinks'
-import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2 } from 'lucide-react'
+import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2, Archive, RotateCcw } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
-import { useSessions, useCreateSession, useDeleteSession } from '@/hooks/use-sessions'
+import { useSessions, useCreateSession, useArchiveSession, useUnarchiveSession, useDeleteSession } from '@/hooks/use-sessions'
 import { useToastStore } from '@/stores/toast-store'
+
+type ArchiveTab = 'active' | 'archived'
 
 export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUiStore()
   const navigate = useNavigate()
-  const sessionsQuery = useSessions()
+  const [archiveTab, setArchiveTab] = useState<ArchiveTab>('active')
+  const sessionsQuery = useSessions(archiveTab === 'active' ? false : true)
   const createSession = useCreateSession()
+  const archiveSession = useArchiveSession()
+  const unarchiveSession = useUnarchiveSession()
   const deleteSession = useDeleteSession()
 
   const allSessions = sessionsQuery.data?.pages.flatMap((p) => p.sessions) ?? []
@@ -28,6 +33,22 @@ export function Sidebar() {
       }
     } catch (err) {
       useToastStore.getState().addToast('error', err instanceof Error ? err.message : '创建会话失败')
+    }
+  }
+
+  const handleArchive = async (sessionId: string) => {
+    try {
+      await archiveSession.mutateAsync(sessionId)
+    } catch (err) {
+      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '归档失败')
+    }
+  }
+
+  const handleUnarchive = async (sessionId: string) => {
+    try {
+      await unarchiveSession.mutateAsync(sessionId)
+    } catch (err) {
+      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '取消归档失败')
     }
   }
 
@@ -93,6 +114,30 @@ export function Sidebar() {
             </Button>
           </div>
 
+          {/* Archive tabs */}
+          <div className="flex gap-1 px-3 mb-2">
+            <button
+              onClick={() => setArchiveTab('active')}
+              className={`flex-1 text-xs font-medium px-2 py-1 rounded transition-colors ${
+                archiveTab === 'active'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)]'
+              }`}
+            >
+              活跃
+            </button>
+            <button
+              onClick={() => setArchiveTab('archived')}
+              className={`flex-1 text-xs font-medium px-2 py-1 rounded transition-colors ${
+                archiveTab === 'archived'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)]'
+              }`}
+            >
+              已归档
+            </button>
+          </div>
+
           {/* Session list */}
           <div className="flex-1 overflow-y-auto px-3">
             {isLoading ? (
@@ -103,7 +148,7 @@ export function Sidebar() {
               </div>
             ) : allSessions.length === 0 ? (
               <p className="text-xs text-[var(--color-text-placeholder)] px-3 py-4">
-                还没有会话
+                {archiveTab === 'active' ? '没有活跃会话' : '没有已归档会话'}
               </p>
             ) : (
               <div className="flex flex-col gap-0.5">
@@ -111,8 +156,11 @@ export function Sidebar() {
                   <div
                     key={session.session_id}
                     onClick={() => navigate(`/chat/${session.session_id}`)}
-                    className="group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]"
+                    className={`group flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)] ${
+                      archiveTab === 'archived' ? 'opacity-60 hover:opacity-100' : ''
+                    }`}
                   >
+                    {archiveTab === 'archived' && <Archive size={14} className="shrink-0" />}
                     <div className="flex-1 truncate">
                       {session.title ?? (
                         <span className="text-[var(--color-text-placeholder)]">
@@ -120,17 +168,44 @@ export function Sidebar() {
                         </span>
                       )}
                     </div>
-                    <Button
-                      variant="icon"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setDeleteTarget(session.session_id)
-                      }}
-                      className="opacity-0 group-hover:opacity-100"
-                      aria-label="删除会话"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                    {archiveTab === 'active' ? (
+                      <Button
+                        variant="icon"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleArchive(session.session_id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100"
+                        aria-label="归档会话"
+                      >
+                        <Archive size={14} />
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleUnarchive(session.session_id)
+                          }}
+                          className="opacity-0 group-hover:opacity-100"
+                          aria-label="取消归档"
+                        >
+                          <RotateCcw size={14} />
+                        </Button>
+                        <Button
+                          variant="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteTarget(session.session_id)
+                          }}
+                          className="opacity-0 group-hover:opacity-100"
+                          aria-label="删除会话"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </>
+                    )}
                     {session.status === 'busy' && (
                       <Loader2 size={14} className="animate-spin text-[var(--color-info)] shrink-0" />
                     )}
@@ -144,7 +219,7 @@ export function Sidebar() {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        title="删除会话"
+        title="删除已归档的会话"
         description="删除后将无法恢复该会话及其所有消息。"
         confirmLabel="删除"
         variant="danger"

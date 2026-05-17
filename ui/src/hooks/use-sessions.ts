@@ -1,5 +1,5 @@
 import type { InfiniteData } from '@tanstack/react-query'
-import { useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import * as api from '@/lib/api'
 
 const PAGE_LIMIT = 20
@@ -11,11 +11,11 @@ interface SessionsPage {
   offset: number
 }
 
-export function useSessions() {
+export function useSessions(archived?: boolean) {
   return useInfiniteQuery({
-    queryKey: ['sessions'],
+    queryKey: ['sessions', { archived }],
     queryFn: async ({ pageParam = 0 }) => {
-      const res = await api.listSessions({ limit: PAGE_LIMIT, offset: pageParam })
+      const res = await api.listSessions({ limit: PAGE_LIMIT, offset: pageParam, archived })
       return res as SessionsPage
     },
     getNextPageParam: (lastPage) => {
@@ -31,9 +31,28 @@ export function useCreateSession() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (data: api.CreateSessionRequest) => api.createSession(data),
-    onSuccess: (newSession) => {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions', { archived: false }] })
+    },
+  })
+}
+
+export function useArchiveSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.archiveSession(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      return newSession
+    },
+  })
+}
+
+export function useUnarchiveSession() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.unarchiveSession(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
     },
   })
 }
@@ -43,16 +62,18 @@ export function useDeleteSession() {
   return useMutation({
     mutationFn: (id: string) => api.deleteSession(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      queryClient.invalidateQueries({ queryKey: ['sessions', { archived: true }] })
     },
   })
 }
 
 export function useSessionById(sessionId: string | undefined) {
-  const query = useSessions()
-  const allSessions = query.data?.pages.flatMap((p) => p.sessions) ?? []
-  const session = sessionId ? allSessions.find((s) => s.session_id === sessionId) ?? null : null
-  return { session, ...query }
+  return useQuery({
+    queryKey: ['session', sessionId],
+    queryFn: () => api.getSession(sessionId!),
+    enabled: !!sessionId,
+    staleTime: 30_000,
+  })
 }
 
 export function useUpdateSessionModel() {

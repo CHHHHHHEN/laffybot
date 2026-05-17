@@ -36,6 +36,7 @@ def build_session_manager(
     tool_registry: ToolRegistry,
     context_config: ContextConfig | None = None,
     memory_manager: MemoryManager | None = None,
+    max_active_sessions: int = 3,
 ) -> SessionManager:
     return SessionManager(
         store=store,
@@ -44,6 +45,7 @@ def build_session_manager(
         tool_registry=tool_registry,
         context_config=context_config,
         memory_manager=memory_manager,
+        max_active_sessions=max_active_sessions,
     )
 
 

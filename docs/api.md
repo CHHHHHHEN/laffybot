@@ -314,6 +314,8 @@ POST /api/v1/sessions/{session_id}/archive
 
 归档会话并触发记忆提取。归档后会话仍可继续对话，但记忆提取最多触发一次。已归档会话再次归档返回 `409 SESSION_ALREADY_ARCHIVED`。
 
+若会话正在流式输出（status=busy），服务端会等待流式输出完成后自动归档，不会返回 `SESSION_BUSY`。
+
 **响应:**
 ```json
 {
@@ -329,8 +331,33 @@ POST /api/v1/sessions/{session_id}/archive
 ```
 
 **错误响应:**
-- `409 SESSION_BUSY`: 会话正在处理请求，无法归档
 - `409 SESSION_ALREADY_ARCHIVED`: 会话已归档
+
+### 6.5. 取消归档会话
+
+```
+POST /api/v1/sessions/{session_id}/unarchive
+```
+
+取消归档已归档的会话，将 `archived_at` 设为 `null`。
+
+**响应:**
+```json
+{
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "model": "deepseek-ai/DeepSeek-V3",
+    "status": "idle",
+    "created_at": "2024-01-15T10:30:00Z",
+    "message_count": 5,
+    "current_request_id": null,
+    "archived_at": null,
+    "title_auto_generated": true
+}
+```
+
+**错误响应:**
+- `409 SESSION_BUSY`: 会话正在处理请求，无法取消归档
+- `409 SESSION_NOT_ARCHIVED`: 会话未归档，无需取消归档
 
 ### 7. 系统提示设置
 
@@ -606,6 +633,7 @@ GET /api/v1/events
 | 409 | SESSION_BUSY | 会话正在处理请求 |
 | 409 | SESSION_NOT_BUSY | 会话当前无请求可取消 |
 | 409 | SESSION_ALREADY_ARCHIVED | 会话已归档 |
+| 409 | SESSION_NOT_ARCHIVED | 会话未归档 |
 | 409 | SESSION_STATE_ERROR | 会话状态转换冲突 |
 | 409 | MODEL_NAME_CONFLICT | 同一提供商下模型名重复 |
 | 400 | TOOL_VALIDATION_ERROR | 工具参数校验失败 |

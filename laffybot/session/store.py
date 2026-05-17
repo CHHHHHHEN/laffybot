@@ -116,6 +116,10 @@ class SessionStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def unarchive_session(self, session_id: str) -> SessionInfo:
+        raise NotImplementedError
+
+    @abstractmethod
     async def delete_session(self, session_id: str) -> None:
         raise NotImplementedError
 
@@ -126,6 +130,7 @@ class SessionStore(ABC):
         archived: bool | None = None,
         limit: int = 20,
         offset: int = 0,
+        order_by_asc: bool = False,
     ) -> tuple[list[SessionInfo], int]:
         raise NotImplementedError
 
@@ -425,6 +430,18 @@ class SQLiteStore(SessionStore):
             raise SessionNotFoundError(session_id)
         return await self.get_session(session_id)
 
+    async def unarchive_session(self, session_id: str) -> SessionInfo:
+        db = await self._ensure_db()
+        now = self._format_dt(self._now())
+        cursor = await db.execute(
+            "UPDATE sessions SET archived_at = NULL, updated_at = ? WHERE session_id = ?",
+            (now, session_id),
+        )
+        await db.commit()
+        if cursor.rowcount == 0:
+            raise SessionNotFoundError(session_id)
+        return await self.get_session(session_id)
+
     async def delete_session(self, session_id: str) -> None:
         db = await self._ensure_db()
         cursor = await db.execute(
@@ -440,6 +457,7 @@ class SQLiteStore(SessionStore):
         archived: bool | None = None,
         limit: int = 20,
         offset: int = 0,
+        order_by_asc: bool = False,
     ) -> tuple[list[SessionInfo], int]:
         db = await self._ensure_db()
         clauses = []
@@ -456,7 +474,8 @@ class SQLiteStore(SessionStore):
         async with db.execute(count_sql, params) as cursor:
             count_row = await cursor.fetchone()
         total = int(count_row["total"] if count_row is not None else 0)
-        query = f"SELECT * FROM sessions {where} ORDER BY updated_at DESC, session_id DESC LIMIT ? OFFSET ?"
+        order = "ASC" if order_by_asc else "DESC"
+        query = f"SELECT * FROM sessions {where} ORDER BY updated_at {order}, session_id {order} LIMIT ? OFFSET ?"
         async with db.execute(query, [*params, limit, offset]) as cursor:
             rows = await cursor.fetchall()
         return [self._row_to_session(row) for row in rows], total

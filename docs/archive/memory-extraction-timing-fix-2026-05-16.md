@@ -94,6 +94,11 @@ summary: |
 
 ### Outstanding items
 
-- 前端 UI 改动（Session 列表区分归档/未归档、归档按钮等）不在本次范围内
-- 自动归档策略（如删除时自动归档而非直接删除）作为后续优化
-- 取消归档（unarchive）不在本次范围内
+~~- 前端 UI 改动（Session 列表区分归档/未归档、归档按钮等）不在本次范围内~~
+~~- 自动归档策略（如删除时自动归档而非直接删除）作为后续优化~~
+~~- 取消归档（unarchive）不在本次范围内~~
+
+以上三项已在 [archive-ui-autoarchive-unarchive-2026-05-16](archive-ui-autoarchive-unarchive-2026-05-16.md) 中实现。
+
+---
+Implementation record: see `docs/archive/archive-ui-autoarchive-unarchive-2026-05-16.md`

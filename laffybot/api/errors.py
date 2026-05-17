@@ -20,6 +20,7 @@ from laffybot.session.errors import (
     SessionAlreadyArchivedError,
     SessionBusyError,
     SessionError,
+    SessionNotArchivedError,
     SessionNotBusyError,
     SessionNotFoundError,
     SessionStateError,
@@ -74,6 +75,13 @@ def map_session_error(exc: SessionError) -> JSONResponse:
         return error_response(
             http_status.HTTP_409_CONFLICT,
             "SESSION_ALREADY_ARCHIVED",
+            str(exc),
+        )
+    if isinstance(exc, SessionNotArchivedError):
+        logger.warning("Session error: {}", exc)
+        return error_response(
+            http_status.HTTP_409_CONFLICT,
+            "SESSION_NOT_ARCHIVED",
             str(exc),
         )
     if isinstance(exc, SessionStateError):

@@ -41,6 +41,13 @@ class SessionAlreadyArchivedError(SessionError):
         super().__init__(session_id, f"Session {session_id} is already archived")
 
 
+class SessionNotArchivedError(SessionError):
+    """Raised when trying to unarchive a session that is not archived."""
+
+    def __init__(self, session_id: str):
+        super().__init__(session_id, f"Session {session_id} is not archived")
+
+
 class SessionStateError(SessionError):
     """Raised when a state transition conflicts with the stored status."""
 

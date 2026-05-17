@@ -16,12 +16,14 @@
 | SessionManager 核心 | ✅ 已实现 | `laffybot/session/manager.py` |
 | SessionStore 接口 | ✅ 已实现 | `laffybot/session/store.py` |
 | SQLiteStore 实现 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore` |
+| SQLiteStore 取消归档 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore.unarchive_session` |
 | SessionInfo 数据结构 | ✅ 已实现 | `laffybot/session/models.py` |
 | ContextBuilder 集成 | ✅ 已实现 | `laffybot/session/manager.py` → `_build_messages` |
 | CancellationToken | ✅ 已实现 | `laffybot/agent/cancellation.py` |
 | 并发控制 (asyncio.Lock) | ✅ 已实现 | `laffybot/session/manager.py` → `_locks` |
 | Token 元数据持久化 | ✅ 已实现 | `laffybot/session/store.py` → `save_message` |
-| 异常定义 | ✅ 已实现 | `laffybot/session/errors.py` |
+| 异常定义（含 SessionNotArchivedError） | ✅ 已实现 | `laffybot/session/errors.py` |
+| 自动归档策略（max_active_sessions） | ✅ 已实现 | `laffybot/session/manager.py:_auto_archive_excess_sessions` |
 | ProviderStore 接口 | ✅ 已实现 | `laffybot/session/provider_store.py` |
 | SQLiteProviderStore 实现 | ✅ 已实现 | `laffybot/session/provider_store.py:SQLiteProviderStore` |
 
@@ -74,6 +76,8 @@ SessionManager 是 Laffybot API 的核心组件，负责管理会话生命周期
 > **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py`
 
 创建、获取、删除、列出会话 ✅
+
+归档、取消归档、自动归档 ✅
 
 ### 2. 状态管理
 > **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py`, `laffybot/session/store.py`
@@ -195,6 +199,18 @@ async def archive_session(self, session_id: str) -> SessionInfo
 
 **异常：** `SessionNotFoundError`
 
+#### unarchive_session
+取消归档会话（将 `archived_at` 设为 NULL）。
+
+**签名：**
+```python
+async def unarchive_session(self, session_id: str) -> SessionInfo
+```
+
+**返回：** 取消归档后的 SessionInfo 实例（`archived_at` 为 NULL）
+
+**异常：** `SessionNotFoundError`
+
 #### delete_session
 删除会话及其所有消息。
 
@@ -216,14 +232,15 @@ async def list_sessions(
     archived: bool | None = None,
     limit: int = 20,
     offset: int = 0,
+    order_by_asc: bool = False,
 ) -> tuple[list[SessionInfo], int]
 ```
 
-**参数：** `status` - 可选的状态过滤；`archived` - 可选，`True` 仅返回已归档，`False` 仅返回未归档，`None` 返回全部
+**参数：** `status` - 可选的状态过滤；`archived` - 可选，`True` 仅返回已归档，`False` 仅返回未归档，`None` 返回全部；`order_by_asc` - 可选，按 `updated_at` 升序排序（用于自动归档策略查找最旧会话）
 
 **返回：** (会话列表, 总数) 元组
 
-**排序：** 按 `updated_at DESC, session_id DESC` 排序
+**排序：** 默认按 `updated_at DESC, session_id DESC` 排序；`order_by_asc=True` 时按 `updated_at ASC, session_id ASC` 排序
 
 #### save_message
 保存消息到会话历史。
@@ -301,30 +318,33 @@ def __init__(
     tool_registry: ToolRegistry,
     context_config: ContextConfig | None = None,
     context_builder: ContextBuilder | None = None,
+    memory_manager: MemoryManager | None = None,
+    max_active_sessions: int = 3,
 ) -> None
 ```
 
-**参数：** `store` - 会话持久化存储；`provider_store` - 提供商配置存储；`tool_registry` - 工具注册表；`context_config` - 上下文构建配置（可选）；`context_builder` - ContextBuilder 实例（可选，支持依赖注入）
+**参数：** `store` - 会话持久化存储；`provider_store` - 提供商配置存储；`tool_registry` - 工具注册表；`context_config` - 上下文构建配置（可选）；`context_builder` - ContextBuilder 实例（可选，支持依赖注入）；`memory_manager` - 记忆管理器（可选）；`max_active_sessions` - 活跃会话数量上限，超限时自动归档最旧的（默认 3）
 
 > 移除了 `provider_factory` 参数。Provider 不再由外部工厂函数创建，改由 SessionManager 运行时从 ProviderStore 获取配置后直接实例化。
 
 #### create_session
-创建新会话。
+创建新会话。创建后异步触发自动归档检查：若活跃会话数超过 `max_active_sessions`，自动归档最旧的会话。
 
 **签名：**
 ```python
 async def create_session(
     self,
-    system_prompt: str | None = None,
     max_iterations: int = 10,
+    provider_id: str | None = None,
+    model_name: str | None = None,
 ) -> SessionInfo
 ```
 
-**参数：** `system_prompt` - 可选的系统提示词；`max_iterations` - Agent 最大迭代次数
+**参数：** `max_iterations` - Agent 最大迭代次数；`provider_id` / `model_name` - 可选，指定提供商和模型，未指定时从默认配置读取
 
 **返回：** SessionInfo 实例
 
-**异常：** `NoActiveProviderError` - 未设置全局选中；`DatabaseError` - 创建失败
+**异常：** `NoActiveProviderError` - 未配置默认模型
 
 > 移除了 `model` 参数。模型名称由 SessionManager 内部从 ProviderStore.get_active_selection() 解析，作为快照写入 session。
 
@@ -402,7 +422,7 @@ async def get_history(
 **实现说明**：此功能已在 `ContextBuilder` 组件中实现，参见 `context-builder-design.md`。
 
 #### archive_session
-归档会话并触发记忆提取。
+归档会话并触发记忆提取。若会话忙碌（流式输出中），等待流式输出完成后再归档。
 
 **签名：**
 ```python
@@ -413,7 +433,23 @@ async def archive_session(self, session_id: str) -> SessionInfo
 
 **返回：** 归档后的 SessionInfo 实例
 
-**异常：** `SessionNotFoundError` - 会话不存在；`SessionBusyError` - 会话忙碌；`SessionAlreadyArchivedError` - 会话已归档
+**异常：** `SessionNotFoundError` - 会话不存在；`SessionAlreadyArchivedError` - 会话已归档
+
+> busy 时不再返回 `SessionBusyError`，改用 asyncio.Lock 等待流式完成。
+
+#### unarchive_session
+取消归档已归档的会话（将 `archived_at` 设为 NULL）。
+
+**签名：**
+```python
+async def unarchive_session(self, session_id: str) -> SessionInfo
+```
+
+**参数：** `session_id` - 会话标识符
+
+**返回：** 取消归档后的 SessionInfo 实例
+
+**异常：** `SessionNotFoundError` - 会话不存在；`SessionBusyError` - 会话忙碌；`SessionNotArchivedError` - 会话未归档
 
 #### delete_session
 删除会话。
@@ -438,10 +474,11 @@ async def list_sessions(
     archived: bool | None = None,
     limit: int = 20,
     offset: int = 0,
+    order_by_asc: bool = False,
 ) -> tuple[list[SessionInfo], int]
 ```
 
-**参数：** `status` - 可选的状态过滤；`archived` - 可选，`True` 仅返回已归档，`False` 仅返回未归档，`None` 返回全部；`limit` - 最大返回会话数；`offset` - 分页偏移
+**参数：** `status` - 可选的状态过滤；`archived` - 可选，`True` 仅返回已归档，`False` 仅返回未归档，`None` 返回全部；`limit` - 最大返回会话数；`offset` - 分页偏移；`order_by_asc` - 按 updated_at 升序排序（用于自动归档）
 
 **返回：** (会话列表, 总数) 元组
 
@@ -471,6 +508,11 @@ async def list_sessions(
 
 ### SessionAlreadyArchivedError
 会话已归档，无法再次归档。
+
+**继承：** SessionError
+
+### SessionNotArchivedError
+会话未归档，无法取消归档。
 
 **继承：** SessionError
 

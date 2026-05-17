@@ -1,10 +1,12 @@
-import { ArrowLeft, Pencil, Check, X } from 'lucide-react'
+import { ArrowLeft, Pencil, Check, X, Archive, RotateCcw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { SessionStatusBadge } from './SessionStatusBadge'
 import { Button } from '@/components/ui/Button'
 import type { SessionResponse } from '@/lib/api'
 import { useUpdateSessionTitle } from '@/hooks/use-update-session-title'
+import { useArchiveSession, useUnarchiveSession } from '@/hooks/use-sessions'
+import { useToastStore } from '@/stores/toast-store'
 
 interface ChatHeaderProps {
   session: SessionResponse | null
@@ -16,6 +18,8 @@ export function ChatHeader({ session }: ChatHeaderProps) {
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const updateTitle = useUpdateSessionTitle(session?.session_id ?? '')
+  const archiveSession = useArchiveSession()
+  const unarchiveSession = useUnarchiveSession()
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -49,6 +53,26 @@ export function ChatHeader({ session }: ChatHeaderProps) {
       handleCancelEdit()
     }
   }
+
+  const handleArchive = async () => {
+    if (!session) return
+    try {
+      await archiveSession.mutateAsync(session.session_id)
+    } catch (err) {
+      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '归档失败')
+    }
+  }
+
+  const handleUnarchive = async () => {
+    if (!session) return
+    try {
+      await unarchiveSession.mutateAsync(session.session_id)
+    } catch (err) {
+      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '取消归档失败')
+    }
+  }
+
+  const isArchived = session?.archived_at != null
 
   return (
     <div className="flex items-center gap-3 px-4 h-14 border-b border-[var(--color-border)] shrink-0">
@@ -110,6 +134,31 @@ export function ChatHeader({ session }: ChatHeaderProps) {
               </>
             )}
           </div>
+          {isArchived ? (
+            <>
+              <span className="text-xs text-[var(--color-text-placeholder)] flex items-center gap-1">
+                <Archive size={14} />
+                已归档
+              </span>
+              <Button
+                variant="icon"
+                onClick={handleUnarchive}
+                aria-label="取消归档"
+                title="取消归档"
+              >
+                <RotateCcw size={16} />
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="icon"
+              onClick={handleArchive}
+              aria-label="归档"
+              title="归档"
+            >
+              <Archive size={16} />
+            </Button>
+          )}
           <span className="text-xs text-[var(--color-text-placeholder)] truncate shrink-0">
             {session.model_name}
           </span>

@@ -115,6 +115,11 @@ class ApiConfig(BaseModel):
         default=False,
         description="Allow credentialed CORS requests.",
     )
+    max_active_sessions: int = Field(
+        default=3,
+        ge=1,
+        description="Maximum number of active (non-archived) sessions before auto-archiving the oldest.",
+    )
 
     @classmethod
     def from_json(cls, path: str) -> ApiConfig:
