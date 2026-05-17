@@ -465,6 +465,30 @@ export function clearExtractModel() {
   })
 }
 
+/* ---- Consolidation Model APIs ---- */
+
+export interface ConsolidationModelResponse {
+  provider_id: string
+  model_name: string
+}
+
+export function getConsolidationModel() {
+  return apiRequest<ConsolidationModelResponse | null>('/api/v1/settings/consolidation-model')
+}
+
+export function setConsolidationModel(data: { provider_id: string; model_name: string }) {
+  return apiRequest<void>('/api/v1/settings/consolidation-model', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function clearConsolidationModel() {
+  return apiRequest<void>('/api/v1/settings/consolidation-model', {
+    method: 'DELETE',
+  })
+}
+
 /* ---- Memory APIs ---- */
 
 export interface MemoryResponse {

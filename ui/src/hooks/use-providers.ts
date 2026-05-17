@@ -158,6 +158,35 @@ export function useClearExtractModel() {
   })
 }
 
+export function useConsolidationModel() {
+  return useQuery({
+    queryKey: ['consolidationModel'],
+    queryFn: () => api.getConsolidationModel(),
+    staleTime: 30_000,
+  })
+}
+
+export function useSetConsolidationModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { provider_id: string; model_name: string }) =>
+      api.setConsolidationModel(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consolidationModel'] })
+    },
+  })
+}
+
+export function useClearConsolidationModel() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.clearConsolidationModel(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consolidationModel'] })
+    },
+  })
+}
+
 /* ---- System Prompt Hooks ---- */
 
 export function useSystemPrompt() {

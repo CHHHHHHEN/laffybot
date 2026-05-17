@@ -57,7 +57,7 @@ def create_app(
     tool_registry_obj = tool_registry or ToolRegistry()
     memory_store_obj = build_memory_store(config)
     memory_manager_obj = memory_manager or build_memory_manager(
-        memory_config, store=memory_store_obj
+        memory_config, store=memory_store_obj, db_path=config.database_path
     )
     tool_registry_obj.register(ReadFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(WriteFileTool(workspace=Path.cwd()))

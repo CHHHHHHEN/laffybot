@@ -56,11 +56,13 @@ from laffybot.api.schemas import (
 )
 from laffybot.config import ContextConfig
 from laffybot.memory import MemoryManager, MemoryNotFoundError, MemoryStore
+from laffybot.memory.consolidator import MemoryConsolidator
 from laffybot.providers.errors import (
     ModelNotFoundError,
     ProviderConnectionError,
     ProviderNotFoundError,
 )
+from laffybot.providers.openai import OpenAIProvider
 from laffybot.session.app_setting_store import AppSettingStore
 from laffybot.session.errors import (
     SessionBusyError,
@@ -702,8 +704,28 @@ async def get_consolidated_memory(
 @router.post("/consolidated-memory/trigger")
 async def trigger_consolidation(
     memory_manager: MemoryManager | None = Depends(get_memory_manager),
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+    provider_store: ProviderStore = Depends(get_provider_store),
 ) -> dict[str, object]:
-    if memory_manager is None or memory_manager.consolidator is None:
+    if memory_manager is None or memory_manager.store is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "CONSOLIDATION_NOT_CONFIGURED",
+                "message": "Memory system not available",
+            },
+        )
+    if memory_manager.consolidated_store is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "CONSOLIDATION_NOT_CONFIGURED",
+                "message": "Consolidated memory store not available",
+            },
+        )
+
+    config = await app_setting_store.get_consolidation_model()
+    if config is None:
         raise HTTPException(
             status_code=400,
             detail={
@@ -711,7 +733,20 @@ async def trigger_consolidation(
                 "message": "Consolidation model not configured",
             },
         )
-    performed = await memory_manager.consolidator.try_consolidate()
+
+    provider_config = await provider_store.get_provider_config(config.provider_id)
+    provider = OpenAIProvider(provider_config)
+
+    consolidator = MemoryConsolidator(
+        provider=provider,
+        model=config.model_name,
+        memory_store=memory_manager.store,
+        consolidated_store=memory_manager.consolidated_store,
+        trigger_count=memory_manager.config.consolidation_trigger_count,
+        max_source_memories=memory_manager.config.max_source_memories,
+    )
+
+    performed = await consolidator.try_consolidate()
     return {
         "performed": performed,
         "message": "Consolidation triggered"

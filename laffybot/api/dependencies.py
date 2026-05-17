@@ -72,8 +72,9 @@ def get_session_manager(request: Request) -> SessionManager:
 def build_memory_manager(
     config: MemoryConfig | None = None,
     store: MemoryStore | None = None,
+    db_path: str | None = None,
 ) -> MemoryManager:
-    return MemoryManager(config or MemoryConfig(), store=store)
+    return MemoryManager(config or MemoryConfig(), store=store, db_path=db_path)
 
 
 def get_memory_manager(request: Request) -> MemoryManager | None:

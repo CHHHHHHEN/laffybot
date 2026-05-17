@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Settings2, Loader2, Check, X, Brain, MessageSquareText } from 'lucide-react'
-import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel, useExtractModel, useSetExtractModel, useClearExtractModel, useSystemPrompt, useSetSystemPrompt } from '@/hooks/use-providers'
+import { Settings2, Loader2, Check, X, Brain, MessageSquareText, Combine } from 'lucide-react'
+import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel, useExtractModel, useSetExtractModel, useClearExtractModel, useConsolidationModel, useSetConsolidationModel, useClearConsolidationModel, useSystemPrompt, useSetSystemPrompt } from '@/hooks/use-providers'
 import { Button } from '@/components/ui/Button'
 import { useToastStore } from '@/stores/toast-store'
 
@@ -118,17 +118,22 @@ export function AdvancedSettingsPage() {
   const { data: providers = [], isLoading: providersLoading } = useProviders()
   const { data: currentSummaryConfig } = useSummaryModel()
   const { data: currentExtractConfig } = useExtractModel()
+  const { data: currentConsolidationConfig } = useConsolidationModel()
   const { data: systemPromptData } = useSystemPrompt()
   const setSummaryModel = useSetSummaryModel()
   const clearSummaryModel = useClearSummaryModel()
   const setExtractModel = useSetExtractModel()
   const clearExtractModel = useClearExtractModel()
+  const setConsolidationModel = useSetConsolidationModel()
+  const clearConsolidationModel = useClearConsolidationModel()
   const setSystemPrompt = useSetSystemPrompt()
 
   const [isSavingSummary, setIsSavingSummary] = useState(false)
   const [isClearingSummary, setIsClearingSummary] = useState(false)
   const [isSavingExtract, setIsSavingExtract] = useState(false)
   const [isClearingExtract, setIsClearingExtract] = useState(false)
+  const [isSavingConsolidation, setIsSavingConsolidation] = useState(false)
+  const [isClearingConsolidation, setIsClearingConsolidation] = useState(false)
   const [systemPromptValue, setSystemPromptValue] = useState('')
   const [isSavingSystemPrompt, setIsSavingSystemPrompt] = useState(false)
   const [systemPromptInitialized, setSystemPromptInitialized] = useState(false)
@@ -183,6 +188,30 @@ export function AdvancedSettingsPage() {
       useToastStore.getState().addToast('error', '清除失败，请稍后重试')
     } finally {
       setIsClearingExtract(false)
+    }
+  }
+
+  const handleSaveConsolidation = async (providerId: string, modelName: string) => {
+    setIsSavingConsolidation(true)
+    try {
+      await setConsolidationModel.mutateAsync({ provider_id: providerId, model_name: modelName })
+      useToastStore.getState().addToast('success', '记忆归并模型配置已保存')
+    } catch {
+      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+    } finally {
+      setIsSavingConsolidation(false)
+    }
+  }
+
+  const handleClearConsolidation = async () => {
+    setIsClearingConsolidation(true)
+    try {
+      await clearConsolidationModel.mutateAsync()
+      useToastStore.getState().addToast('success', '已清除记忆归并模型配置')
+    } catch {
+      useToastStore.getState().addToast('error', '清除失败，请稍后重试')
+    } finally {
+      setIsClearingConsolidation(false)
     }
   }
 
@@ -334,6 +363,50 @@ export function AdvancedSettingsPage() {
             onClear={handleClearExtract}
             isSaving={isSavingExtract}
             isClearing={isClearingExtract}
+          />
+        )}
+      </div>
+
+      {/* Consolidation Model Section */}
+      <div className="flex items-center gap-3 mb-6 mt-8">
+        <div className="w-10 h-10 rounded-lg bg-[var(--color-secondary-bg)] flex items-center justify-center">
+          <Combine size={20} className="text-[var(--color-text-secondary)]" />
+        </div>
+        <div>
+          <h3 className="text-base font-medium text-[var(--color-text-primary)]">记忆归并模型</h3>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            用于将多条原始记忆合并为结构化摘要的模型
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-page-bg)] p-4 mb-4">
+        <div className="text-sm text-[var(--color-text-secondary)] space-y-2 mb-4">
+          <p>记忆归并模型用于将多条原始记忆通过 LLM 合并为一条结构化摘要，减少冗余并提升记忆注入效率。</p>
+          <p>建议选择指令遵循能力较强的模型（如 gpt-4o、claude-3.5-sonnet 等）。</p>
+        </div>
+
+        {currentConsolidationConfig && (
+          <div className="mb-4 p-3 rounded bg-[var(--color-secondary-bg)] text-sm">
+            <span className="text-[var(--color-text-secondary)]">当前配置：</span>
+            <span className="font-mono text-[var(--color-text-primary)]">
+              {' '}{currentConsolidationConfig.provider_id} / {currentConsolidationConfig.model_name}
+            </span>
+          </div>
+        )}
+
+        {providers.length === 0 ? (
+          <div className="text-center py-6 text-sm text-[var(--color-text-placeholder)]">
+            请先在「提供商配置」中添加提供商
+          </div>
+        ) : (
+          <ProviderModelSelector
+            currentConfig={currentConsolidationConfig}
+            providers={providers}
+            onSave={handleSaveConsolidation}
+            onClear={handleClearConsolidation}
+            isSaving={isSavingConsolidation}
+            isClearing={isClearingConsolidation}
           />
         )}
       </div>
