@@ -16,7 +16,7 @@ import {
 import { useSessions, useCreateSession, useUpdateSessionStatus } from '@/hooks/use-sessions'
 import { connectSseStream } from '@/lib/sse'
 import type { SseEvent } from '@/lib/sse'
-import { getHistory, cancelRequest } from '@/lib/api'
+import { getHistory, cancelRequest, ApiError } from '@/lib/api'
 import { useToastStore } from '@/stores/toast-store'
 import {
   getOrCreateAbortController,
@@ -193,10 +193,30 @@ export function ChatPage() {
 
     try {
       await cancelRequest(sessionId)
-    } catch {
-      // best effort
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'SESSION_NOT_BUSY') {
+        // Session already reset on backend — sync frontend state
+        const store = useChatStore.getState()
+        store.flushSessionStreamBuffer(sessionId)
+        store.setSessionConnectionStatus(sessionId, 'disconnected')
+        store.stopStreaming(sessionId)
+        store.setSessionRequestId(sessionId, null)
+        updateSessionStatus(sessionId, 'idle')
+        queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        return
+      }
+      // best effort for other errors
     }
-  }, [sessionId])
+
+    // SSE connection already aborted before cancel response — force state sync
+    const store = useChatStore.getState()
+    store.flushSessionStreamBuffer(sessionId)
+    store.setSessionConnectionStatus(sessionId, 'disconnected')
+    store.stopStreaming(sessionId)
+    store.setSessionRequestId(sessionId, null)
+    updateSessionStatus(sessionId, 'idle')
+    queryClient.invalidateQueries({ queryKey: ['sessions'] })
+  }, [sessionId, updateSessionStatus, queryClient])
 
   const handleCreateSession = useCallback(async () => {
     try {

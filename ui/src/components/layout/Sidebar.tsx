@@ -20,7 +20,7 @@ export function Sidebar() {
   const allSessions = sessionsQuery.data?.pages.flatMap((p) => p.sessions) ?? []
   const isLoading = sessionsQuery.isLoading
 
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ sessionId: string; isArchived: boolean } | null>(null)
 
   const handleCreateSession = async () => {
     try {
@@ -52,7 +52,7 @@ export function Sidebar() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
-      await deleteSession.mutateAsync(deleteTarget)
+      await deleteSession.mutateAsync(deleteTarget.sessionId)
       navigate('/chat')
     } catch {
       useToastStore.getState().addToast('error', '删除会话失败')
@@ -80,7 +80,7 @@ export function Sidebar() {
       >
         <div className={`flex flex-col h-full ${sidebarOpen ? 'block' : 'lg:block hidden'}`}>
           {/* Header */}
-          <div className="flex items-center justify-between px-4 h-14 border-b border-[var(--color-border)] shrink-0">
+          <div className={`flex items-center h-14 border-b border-[var(--color-border)] shrink-0 ${sidebarOpen ? 'justify-between px-4' : 'justify-center px-2'}`}>
             {sidebarOpen && (
               <span className="font-semibold text-base text-[var(--color-text-primary)]">
                 Laffybot
@@ -96,22 +96,23 @@ export function Sidebar() {
           </div>
 
           {/* Nav links */}
-          <NavLinks />
+          <NavLinks collapsed={!sidebarOpen} />
 
           {/* New chat button */}
-          <div className="px-3 mb-2">
+          <div className={sidebarOpen ? 'px-3 mb-2' : 'px-2 mb-2'}>
             <Button
               variant="ghost"
               onClick={handleCreateSession}
-              className="w-full justify-start"
+              className={`w-full ${sidebarOpen ? 'justify-start' : 'justify-center'}`}
               aria-label="新建会话"
             >
               <MessageSquarePlus size={18} />
-              <span>新建会话</span>
+              {sidebarOpen && <span>新建会话</span>}
             </Button>
           </div>
 
           {/* Session list */}
+          {sidebarOpen && (
           <div className="flex-1 overflow-y-auto px-3">
             {isLoading ? (
               <div className="space-y-2 px-3 py-4">
@@ -160,7 +161,7 @@ export function Sidebar() {
                               variant="icon"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setDeleteTarget(session.session_id)
+                                setDeleteTarget({ sessionId: session.session_id, isArchived: true })
                               }}
                               aria-label="删除会话"
                             >
@@ -168,16 +169,28 @@ export function Sidebar() {
                             </Button>
                           </>
                         ) : (
-                          <Button
-                            variant="icon"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleArchive(session.session_id)
-                            }}
-                            aria-label="归档会话"
-                          >
-                            <Archive size={14} />
-                          </Button>
+                          <>
+                            <Button
+                              variant="icon"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleArchive(session.session_id)
+                              }}
+                              aria-label="归档会话"
+                            >
+                              <Archive size={14} />
+                            </Button>
+                            <Button
+                              variant="icon"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteTarget({ sessionId: session.session_id, isArchived: false })
+                              }}
+                              aria-label="删除会话"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </>
                         )}
                       </div>
                       {session.status === 'busy' && (
@@ -189,12 +202,13 @@ export function Sidebar() {
               </div>
             )}
           </div>
+          )}
         </div>
       </aside>
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        title="删除已归档的会话"
+        title={deleteTarget?.isArchived ? '删除已归档的会话' : '删除会话'}
         description="删除后将无法恢复该会话及其所有消息。"
         confirmLabel="删除"
         variant="danger"

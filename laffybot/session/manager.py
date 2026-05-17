@@ -45,6 +45,7 @@ class SessionManager:
         context_builder: ContextBuilder | None = None,
         memory_manager: MemoryManager | None = None,
         max_active_sessions: int = 3,
+        tool_timeout_s: int = 120,
     ) -> None:
         self.store = store
         self.provider_store = provider_store
@@ -52,6 +53,7 @@ class SessionManager:
         self.tool_registry = tool_registry
         self.memory_manager = memory_manager
         self.max_active_sessions = max_active_sessions
+        self.tool_timeout_s = tool_timeout_s
         self._locks: dict[str, asyncio.Lock] = {}
         self._active_tokens: dict[str, CancellationToken] = {}
 
@@ -262,6 +264,7 @@ class SessionManager:
                     tools=self.tool_registry,
                     model=session.model_name,
                     max_iterations=session.max_iterations,
+                    tool_timeout_s=self.tool_timeout_s,
                 )
 
                 accumulated_usage: dict[str, int] = {}

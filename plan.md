@@ -1,3 +1,3 @@
 # Plan
 
-<!-- New plan goes here -->
+<!-- Next design goes here -->

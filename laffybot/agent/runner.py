@@ -42,6 +42,7 @@ class AgentRunSpec:
     max_tool_result_chars: int = 10000
     temperature: float | None = None
     max_tokens: int | None = None
+    tool_timeout_s: int = 120
 
 
 class AgentRunner:
@@ -151,11 +152,21 @@ class AgentRunner:
                         start_time = time.perf_counter()
                         log.debug("Tool execution started: name={}", tool_call.name)
                         try:
-                            result = await spec.tools.execute(
-                                tool_call.name, tool_call.arguments
+                            result = await asyncio.wait_for(
+                                spec.tools.execute(tool_call.name, tool_call.arguments),
+                                timeout=spec.tool_timeout_s,
                             )
                             success = True
                             error_message = None
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "Tool {} timed out after {}s",
+                                tool_call.name,
+                                spec.tool_timeout_s,
+                            )
+                            result = f"Error: Tool '{tool_call.name}' timed out after {spec.tool_timeout_s}s"
+                            success = False
+                            error_message = f"Tool '{tool_call.name}' timed out after {spec.tool_timeout_s}s"
                         except CancelledError:
                             raise
                         except ToolError as exc:

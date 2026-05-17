@@ -6,7 +6,11 @@ const links = [
   { to: '/settings', label: '设置', icon: Settings },
 ]
 
-export function NavLinks() {
+interface NavLinksProps {
+  collapsed?: boolean
+}
+
+export function NavLinks({ collapsed = false }: NavLinksProps) {
   return (
     <nav className="flex flex-col gap-1 px-3 py-4">
       {links.map((link) => (
@@ -19,11 +23,11 @@ export function NavLinks() {
               isActive
                 ? 'bg-[var(--color-hover-bg)] text-[var(--color-text-primary)] font-medium'
                 : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]'
-            }`
+            } ${collapsed ? 'justify-center px-2' : ''}`
           }
         >
           <link.icon size={20} />
-          <span>{link.label}</span>
+          {!collapsed && <span>{link.label}</span>}
         </NavLink>
       ))}
     </nav>

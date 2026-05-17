@@ -81,7 +81,7 @@ export function InputBar({ isStreaming, disabled, sessionId, providerId, modelNa
     <div className="border-t border-[var(--color-border)] p-4 shrink-0">
       <div className="max-w-[800px] mx-auto flex gap-2 items-end">
         {sessionId && (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
             <Select
               value={providerId ?? ''}
               onChange={(e) => handleProviderChange(e.target.value)}

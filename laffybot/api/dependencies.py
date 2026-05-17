@@ -37,6 +37,7 @@ def build_session_manager(
     context_config: ContextConfig | None = None,
     memory_manager: MemoryManager | None = None,
     max_active_sessions: int = 3,
+    tool_timeout_s: int = 120,
 ) -> SessionManager:
     return SessionManager(
         store=store,
@@ -46,6 +47,7 @@ def build_session_manager(
         context_config=context_config,
         memory_manager=memory_manager,
         max_active_sessions=max_active_sessions,
+        tool_timeout_s=tool_timeout_s,
     )
 
 
