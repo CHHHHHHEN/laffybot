@@ -1,455 +1,163 @@
-# 架构审计修复计划
+# 架构整改计划
 
-**日期**: 2026-05-17 | **来源**: 全量架构审计（后端 `laffybot/` + 前端 `ui/`）
+> 基于 2026-05-17 架构审计结果，修复后端与前端的架构质量问题。
+> 来源：`docs/` 设计文档 + 审计发现的偏差与风险。
 
----
+## 目标
 
-## 一、修复目标
+修复七项架构质量问题：三项高风险（stuck-busy 看门狗、SSE 错误处理重叠、ChatPage 过耦合）、两项中风险（运行时校验、请求超时）、两项低风险（死代码清理、测试基础设施）。目标是通过修复使架构与设计文档对齐，消除数据/控制流中的空白区域。
 
-1. 消除层架构违规和循环依赖风险
-2. 解除 SessionManager 与 OpenAIProvider 的硬编码耦合
-3. 修复 `LLMResponse` 成功/错误状态合并的设计缺陷
-4. 修复前端 API 客户端 header 展开 bug
-5. 解决 session 层竞争条件与资源泄漏
-6. 消除死代码和旧项目名称残留
-7. 建立可持续的工程基盘（测试、CI、版本锁定）
-
----
-
-## 二、范围定义
+## 范围
 
 | 范围类型 | 内容 |
 |----------|------|
-| **范围内** | 架构修复、依赖解耦、错误处理设计、死代码清理、配置增强、测试框架搭建、前端状态修正 |
-| **范围外** | 新功能开发、UI 重设计、性能优化、部署配置、CI/CD 配置 |
-| **推迟** | 响应式适配（tablet/mobile）、Tauri 深度集成 |
+| **范围内** | 后端 session 状态机韧性、SSE 错误处理路径统一、前端 SSE 逻辑提取、SSE 事件运行时校验、总请求超时、清理后端/前端已确认的死代码、建立测试基础设施 |
+| **范围外** | 功能新增（如记忆系统、多提供商扩展）、性能优化、部署/CI 配置、国际化、响应式断点 |
+| **推迟** | AppSettingStore 接口抽象、Sidebar/SessionList 组件拆分、代码分割、TypeScript 版本降级 |
 
----
+## 实施步骤
 
-## 三、废弃说明
+### Phase 1：高风险修复
 
-以下现有代码在对应修复完成后将被移除或替换：
+#### 1. Session 状态机 — stuck-busy 看门狗
 
-| 废弃项 | 对应修复 | 清理方式 |
-|--------|----------|----------|
-| `api/routes.py` 中 `event_stream` 的内联心跳逻辑（line 364-392 的心跳部分） | P5.1 | 移除，改用 `HeartbeatManager` |
-| `providers/openai.py:268-287` 中 `_enforce_role_alternation` 的注入空消息逻辑 | P3.4 | 移除，改为 `raise` |
-| `api/routes.py` 中 `_stream_session_events` 的内联 `asyncio.wait_for` 心跳等待逻辑（line 136-145） | P5.1 | 替换为 `HeartbeatManager.wait_for_ping()` |
-| `api/event_bus.py` 中 `_lock` / `_subscribers` 的直接外部访问模式 | P5.1 | 新增公共 `subscribe()` / `unsubscribe()` 方法替代 |
+**问题**：进程崩溃或异常断开后，`busy` 状态的会话永不解锁。
 
----
+**方案**：在 `SessionManager` 中增加后台扫描任务，定期（如 60s）扫描 status=busy 且 updated_at 超时的会话，将其重置为 idle。
 
-## 四、组件分解与修复方案
+**设计要点**：
+- 扫描周期和超时阈值可配置（`session_timeout_seconds`）
+- 扫描任务在 `SessionManager.start()` / `.stop()` 生命周期中管理
+- 超时重置时清理关联的 `CancellationToken` 和 `asyncio.Lock`
+- 记录 WARN 日志：会话 ID、实际持续时间、超时阈值
 
-### P1 — 架构违规与安全性（高优先级）
+**集成点**：`session/manager.py` 新增生命周期方法；`session/models.py` 新增配置字段。
 
-#### 1.1 层违规：Session → API 反向依赖
+**错误处理**：
+- 扫描任务自身异常：捕获并记录 ERROR 日志，不影响后续扫描周期
+- 重置失败（乐观锁冲突）：跳过，下一周期重试
 
-**问题**: `session/manager.py` 中 `_trigger_auto_title` 在方法体内运行时导入 `laffybot.api.event_bus`。
+**边界情况**：
+- 看门狗启动前没有 stuck 会话
+- 正常运行的 busy 会话不应被误杀（updated_at 比较 + 阈值保护）
+- 会话在扫描间隙完成并变为 idle，乐观锁 UPDATE 无影响
 
-**方案**: 定义事件发布接口（`EventPublisher` 协议类）位于 `session/` 层，`SessionManager.__init__` 通过依赖注入接收该接口。`api/dependencies.py` 中传入 `EventBus` 适配器实现。
+#### 2. SSE 错误处理路径统一
 
-**涉及文件**:
-- 新增: `session/interfaces.py`（`EventPublisher` 协议）
-- 修改: `session/manager.py`（构造签名），`api/event_bus.py`（适配协议），`api/dependencies.py`（注入）
+**问题**：`_stream_session_events()`、`SessionManager.send_message()`、`AgentRunner.run_stream()` 三层均捕获同类异常，可能产生重复或矛盾的 error events。
 
-**已决策**: 使用单一 `publish(event_type, data)` 方法。
+**方案**：重新划分各层职责，消除重叠。
 
----
+**职责划分**：
+- `AgentRunner.run_stream()`：只捕获 `CancelledError` 和工具执行中的 `ToolError`，产出对应的 SSE event，不处理会话/提供商层面的异常
+- `SessionManager.send_message()`：捕获 `ProviderError`、`SessionError` 体系异常，转换为 SSE error event，然后正常 yield 出去。不再 catch 泛型 `Exception`
+- `_stream_session_events()`：只做事件格式化和流控制（心跳、cleanup），不再 catch 领域异常。所有领域异常由 `SessionManager` 统一转换为 error event
+- FastAPI exception handler：处理从 `send_message()` 逃逸的未预期异常（后端错误），返回 500
 
-#### 1.2 SessionManager 与 OpenAIProvider 硬耦合
+**具体改动**：
+- `agent/runner.py`：移除通用 Exception 捕获，只处理 `CancelledError` 和 `ToolError`
+- `session/manager.py`：将 error event 产出逻辑集中在 manager 层，简化 catch 结构
+- `session_routes.py._stream_session_events()`：移除重复的 `SessionNotFoundError` / `ProviderNotFoundError` / `SessionError` 捕获
 
-**问题**: `session/manager.py` 三处直接 `OpenAIProvider(provider_config)`，`api/routes.py` 中 `trigger_consolidation` 同理。
+**错误处理**（按异常/场景描述）：
+- 期望由 AgentRunner 发出 error event 的场景：取消、工具执行失败
+- 期望由 SessionManager 发出 error event 的场景：提供商不可用、模型不存在、会话状态冲突
+- 从所有层逃逸到 FastAPI 的异常：未预期的内部错误，响应 500
 
-**方案**: 定义 `ProviderFactory` 接口，接收 provider 类型/名称，返回 `BaseProvider` 实例。`SessionManager` 和路由层通过 DI 接收 factory。
+#### 3. ChatPage SSE 逻辑提取
 
-**涉及文件**:
-- 新增: `providers/factory.py`（`ProviderFactory` 实现，含注册/查找逻辑）
-- 修改: `session/manager.py`（构造签名），`api/routes.py`，`api/dependencies.py`
+**问题**：`ChatPage.tsx` 345 行，SSE 事件分发、流管理、会话创建、取消逻辑全部耦合在此。
 
----
+**方案**：将 SSE 事件处理和流管理逻辑提取为独立 hook `useSseStream`，ChatPage 只做 UI 编排。
 
-#### 1.3 LLMResponse 成功/错误状态合并
+**组件职责**：
+- `useSseStream(sessionId: string | undefined)` — 管理 SSE 连接生命周期、事件分发、流缓冲区刷新、连接状态暴露
+- `ChatPage` — 用户交互处理（提交、取消、切换）、组件编排、将 hook 输出映射到 store/UI
 
-**问题**: `providers/types.py:20-29` 同一 dataclass 包含 `content` 和 `error_kind`。`providers/openai.py` 将所有异常静默捕获并嵌入该对象，所有调用方必须检查 `error_kind`。
+**接口定义**：
+- `useSseStream` 接收：`sessionId`、`onError` 回调
+- `useSseStream` 返回：`{ submit, cancel, isStreaming, connectionStatus, error }`
 
-**方案**: 改为 `@dataclass` 继承体系或 Union 类型：
-- `SuccessLLMResponse`（`content`, `tool_calls`, `usage`）
-- `ErrorLLMResponse`（`error_kind`, `error_status_code`, `error_should_retry`, `error_message`）
-- `LLMResponse = SuccessLLMResponse | ErrorLLMResponse`
+**集成点**：`ui/src/hooks/useSseStream.ts` 新建；`ChatPage.tsx` 从原有方法中提取。
 
-**涉及文件**:
-- 修改: `providers/types.py`，`providers/openai.py`，`session/manager.py`，`agent/title_generator.py`，`context/compressor.py`
+**边界情况**：
+- 会话切换时自动中断旧连接、清理状态
+- 组件卸载时中断连接
+- 快速连续提交（防重复）由 hook 内部管理
+- 会话切换与流进行中：中断旧流，清理 buffer，再加载新会话历史
 
-**已决策**: 使用 `@dataclass` 继承体系（`SuccessLLMResponse(LLMResponse)` / `ErrorLLMResponse(LLMResponse)`）。
+### Phase 2：架构韧性增强
 
----
+#### 4. SSE 事件运行时校验
 
-#### 1.4 `apiRequest` header 展开 bug
+**问题**：`connectSseStream` 使用 `as SseEvent` 类型断言，无运行时校验。格式错误的服务器数据可静默传播。
 
-**问题**: `ui/src/lib/api.ts:8-13` 中 `...options` 在 `headers` 之后展开，导致 `options.headers` 覆盖整个 headers 对象。
+**方案**：在 SSE 解析入口增加运行时类型守卫，校验后在开发者环境下记录 WARN 日志。
 
-**方案**: 调整展开顺序为 `...options` 在前，`headers` 在后。
+**设计要点**：
+- 定义 `isSseEvent(obj: unknown): obj is SseEvent` 类型守卫函数
+- 对每个解析的 SSE JSON 调用类型守卫，校验失败则丢弃并记录警告
+- 校验在 `api.ts` 的 `connectSseStream` 内部，不作为单独的抽象层
 
-**涉及文件**:
-- 修改: `ui/src/lib/api.ts`
+**错误处理**：
+- 校验失败：丢弃该事件，记录 WARN 日志，不中断流连接
+- 连续校验失败（超过阈值）：记录 ERROR 日志，但保留流连接
 
----
+#### 5. 总请求超时
 
-### P2 — Session 层稳健性
+**问题**：无硬性总请求时间上限，LLM 循环可无限迭代。
 
-#### 2.1 无界锁字典——内存泄漏
+**方案**：在 `SessionManager.send_message()` 中增加总超时控制，超时触发自动取消。
 
-**问题**: `session/manager.py:57-71` `_locks` 字典随会话增长，`delete_session()` 未清理。
+**设计要点**：
+- 在 `ContextConfig` 中增加 `request_timeout_seconds: float = 600`（默认 10 分钟）
+- `send_message()` 使用 `asyncio.wait_for()` 包裹 AgentRunner 执行
+- 超时后自动触发 `CancellationToken.cancel()`
 
-**方案**: 在 `delete_session()` 中 `self._locks.pop(session_id, None)`。可扩展方案：使用 `weakref.WeakValueDictionary`。
+**错误处理**：
+- 超时：发出 `cancelled` SSE event（reason: "request_timeout"）
+- 与手动取消共享相同的 `CancellationToken` 路径，处理逻辑一致
 
-**涉及文件**:
-- 修改: `session/manager.py`
+### Phase 3：清理与基础
 
----
+#### 6. 清理确认的死代码
 
-#### 2.2 `cancel_request` TOCTOU 竞争
+| 代码 | 位置 | 清理方式 |
+|------|------|----------|
+| `sendMessage()` 函数 | `ui/src/lib/api.ts` | 删除未使用的导出函数 |
+| `HeartbeatManager.run()` 方法 | `agent/heartbeat.py` | 删除未使用的背景任务方法 |
 
-**问题**: 先读 DB 状态，后查内存 token，二者之间状态可能变化。
+**注意**：`BaseProvider.chat_completion()` 尽管只在非流式路径使用（compressor/consolidator/extractor/title_generator），但仍被调用，**不是死代码**，不应清理。
 
-**方案**: 在 `cancel_request` 中先获取 per-session lock，然后在锁内完成所有检查。
+#### 7. 测试基础设施
 
-**涉及文件**:
-- 修改: `session/manager.py`
+**问题**：后端测试仅有目录结构无源码，前端无测试框架。
 
----
+**方案**：
 
-#### 2.3 锁在流式持续期间一直持有
+- **后端**：在已有 `tests/` 结构上建立 pytest 测试。优先覆盖：
+  - `SessionManager` 状态机转换
+  - `SQLiteStore` CRUD 和乐观锁
+  - `ProviderRegistry` 路由/限流
+- **前端**：引入 Vitest + testing-library，优先覆盖：
+  - `chat-store` 状态转换
+  - SSE 解析逻辑
 
-**问题**: `send_message` 中 `async with lock` 包裹整个 streaming 方法，而 `cancel_request` 不获取该锁。
+## 现有技术债（本计划不处理）
 
-**方案**: 缩减锁范围为仅状态转换部分（idle→busy、busy→idle）。streaming 本身不持有 session lock，通过 CancellationToken 协调取消。
+| 类别 | 位置 | 说明 |
+|------|------|------|
+| 宽泛 catch | `session/manager.py:361, 387` | `except Exception` 在 send_message 及 finally 中，可能掩盖特定错误 |
+| 脆弱的乐观锁重试 | `session_routes.py:408-415` | update_session_title 的无锁重试逻辑位于路由层，应移至 manager |
+| 空 catch | `ui/src/lib/api.ts:199, 271` | SSE JSON 解析失败的 catch 块为空，调试困难 |
+| 无运行时类型校验 | `ui/src/lib/api.ts:197` | `as SseEvent` 类型断言无运行时守卫（见 Phase 2 item 4 计划修复） |
 
-**涉及文件**:
-- 修改: `session/manager.py`
+## 交付检查清单
 
----
-
-#### 2.4 Fire-and-forget 任务无背压
-
-**问题**: 4 处 `asyncio.create_task` 无上限追踪。
-
-**方案**: 引入 `_background_tasks: set[asyncio.Task]`，每个任务完成后 `task.add_done_callback(_background_tasks.discard)`。`shutdown()` 方法等待所有后台任务完成。
-
-**涉及文件**:
-- 修改: `session/manager.py`
-
----
-
-### P3 — Agent Runner & Provider
-
-#### 3.1 空 LLM 响应导致无限循环
-
-**问题**: `agent/runner.py:220-228` 空响应时 `continue` 不追加消息，下次发送相同请求。
-
-**方案**: 记录连续空响应计数，达到阈值（如 3 次）后终止并产出 error 事件。
-
-**涉及文件**:
-- 修改: `agent/runner.py`
-
----
-
-#### 3.2 `asyncio.Queue.get()` 无超时
-
-**问题**: `agent/runner.py:116-120` `await event_queue.get()` 无超时，若 producer 崩溃 consumer 将永久挂起。
-
-**方案**: 添加 `asyncio.wait_for(event_queue.get(), timeout=XXX)`。
-
-**涉及文件**:
-- 修改: `agent/runner.py`
-
----
-
-#### 3.3 `assert` 在 production 代码中
-
-**问题**: `agent/tools/registry.py:145` `assert tool is not None` 在 `-O` 模式下失效。
-
-**方案**: 替换为 `if tool is None: raise ToolNotFoundError(name)`。
-
-**涉及文件**:
-- 修改: `agent/tools/registry.py`
-
----
-
-#### 3.4 `_enforce_role_alternation` 注入虚假消息
-
-**问题**: `providers/openai.py:268-287` 向消息列表注入空消息。
-
-**方案**: 改为 `raise ValueError("Consecutive same-role messages")` 或 `log.warning + merge`。
-
-**已决策**: 连续相同角色时 `raise ValueError("Consecutive same-role messages")`。
-
-**涉及文件**:
-- 修改: `providers/openai.py`
-
----
-
-#### 3.5 `_parse_response` 两条代码路径
-
-**问题**: `providers/openai.py:419-541` dict 路径和 SDK 路径重复 120 行。
-
-**方案**: 将两种原始响应统一为中间表示（`RawResponse` dataclass），再由此构建 `LLMResponse`。
-
-**涉及文件**:
-- 修改: `providers/openai.py`
-
----
-
-### P4 — 配置 & 工程基盘
-
-#### 4.1 无环境变量配置覆盖
-
-**问题**: `config.py` 中 `ApiConfig` 继承 `BaseModel` 而非 `BaseSettings`，`pydantic-settings` 在 pyproject.toml 中但未使用。
-
-**方案**: 改为继承 `BaseSettings`，添加 `model_config = SettingsConfigDict(env_prefix="LAFFYBOT_")`。
-
-**涉及文件**:
-- 修改: `config.py`
-
----
-
-#### 4.2 `from_json()` 无错误处理
-
-**问题**: `config.py:124-128` 裸 `open` 无 try/except。
-
-**方案**: 捕获 `FileNotFoundError` → 友好提示退出，`JSONDecodeError` → 格式错误提示。
-
-**涉及文件**:
-- 修改: `config.py`、`__main__.py`
-
----
-
-#### 4.3 依赖未锁定
-
-**问题**: `pyproject.toml` 中 11 个运行时依赖全无版本号。
-
-**方案**: 使用 `uv lock` 生成锁定文件，或为每个依赖添加最低版本约束。
-
-**涉及文件**:
-- 修改: `pyproject.toml`，新增 `uv.lock`
-
----
-
-#### 4.4 `python >= 3.13` 过于激进
-
-**问题**: 当前 Python 稳定版为 3.12，3.13 尚未发布。
-
-**方案**: 降低至 `>=3.12`。
-
-**涉及文件**:
-- 修改: `pyproject.toml`
-
----
-
-### P5 — 死代码 & 遗留清理
-
-#### 5.1 心跳 SDK 未接入使用
-
-**问题**: `agent/heartbeat.py:74-117` `run()` 和 `wait_for_ping()` 已实现但未调用。`api/routes.py` 中有两处独立的心跳逻辑：
-1. `_stream_session_events`（line 128-142）：部分使用 `HeartbeatManager`（`interval_s`, `reset()`, `stop()`），但 `asyncio.wait_for` 逻辑内联实现，未使用 `wait_for_ping()`
-2. `event_stream`（line 364-392）：完全独立的心跳实现，硬编码 15s，未使用 `HeartbeatManager`；同时直接访问 `bus._lock`/`bus._subscribers` 违反封装
-
-**方案**: 
-- `_stream_session_events`：将内联 `asyncio.wait_for` 替换为 `HeartbeatManager.wait_for_ping()`
-- `event_stream`：改为使用 `HeartbeatManager` 实例（或 `subscribe()` 方法+外部心跳），消除硬编码常量和内部字段直接访问
-
-**涉及文件**:
-- 修改: `api/routes.py`（两处心跳均接入 `HeartbeatManager` API）
-
----
-
-#### 5.2 旧项目名称残留
-
-**问题**: `file_state.py:158` ContextVar 名 `"nanobot_file_states"`，`shell.py:151` 环境变量 `"NANOBOT_PATH_APPEND"`。
-
-**方案**: 重命名为 `"laffybot_file_states"`、`"LAFFYBOT_PATH_APPEND"`。
-
-**涉及文件**:
-- 修改: `agent/tools/file_state.py`，`agent/tools/shell.py`
-
----
-
-#### 5.3 `map_provider_error` 类型注解不匹配
-
-**问题**: `api/errors.py:103-109` 签名列了具体子类型但调用方传入 `ProviderError` 基类，需要 `# type: ignore`。
-
-**方案**: 改为接受 `ProviderError`，内部用 `isinstance` 分发。
-
-**涉及文件**:
-- 修改: `api/errors.py`
-
----
-
-#### 5.4 Route 文件过大
-
-**问题**: `api/routes.py` 1027 行，session / provider / tools / health 混杂。
-
-**方案**: 拆分为 `session_routes.py`、`provider_routes.py`、`tool_routes.py`、`health_routes.py`。
-
-**涉及文件**:
-- 拆分: `api/routes.py` → 多个模块
-
----
-
-#### 5.5 MCP 工具命名分类脆弱
-
-**问题**: `agent/tools/registry.py:87-98` `get_definitions()` 通过 `name.startswith("mcp_")` 区分 MCP 和内置工具，内置工具若以 `mcp_` 开头会被错误分类。
-
-**方案**: 改为显式标记（如 `Tool.kind: Literal["builtin", "mcp"]` 字段），替换字符串前缀判断。
-
-**涉及文件**:
-- 修改: `agent/tools/base.py`（`Tool` 基类增加 `kind` 属性），`agent/tools/registry.py`（`get_definitions` 改用 `kind` 判断）
-
----
-
-### P6 — 前端修复
-
-#### 6.1 SSE 流提前关闭时 UI 卡死
-
-**问题**: 无 `done`/`error` 事件的流关闭时 `isStreaming` 永不清零。
-
-**方案**: 在 `handleSubmit` 中添加 `finally` 块，检查并清理流状态。
-
-**涉及文件**:
-- 修改: `ui/src/pages/ChatPage.tsx`
-
----
-
-#### 6.2 `boundaryToolCallCounts` 跨会话泄漏
-
-**问题**: `ChatPage.tsx:29` `useRef` 保留旧会话的工具调用计数。
-
-**方案**: 在 `useEffect` 的 sessionId 变更时重置 ref。
-
-**涉及文件**:
-- 修改: `ui/src/pages/ChatPage.tsx`
-
----
-
-#### 6.3 React 19 Strict Mode 下历史请求重复
-
-**问题**: `ChatPage.tsx:44-75` useEffect 无 cleanup，开发模式下请求两次。
-
-**方案**: 添加 `AbortController` 并在 cleanup 中 abort。
-
-**涉及文件**:
-- 修改: `ui/src/pages/ChatPage.tsx`
-
----
-
-#### 6.4 `@tanstack/react-query-devtools` 在 `dependencies`
-
-**问题**: 应放在 `devDependencies`。
-
-**方案**: 移入 `devDependencies`，import 加 `import.meta.env.DEV` 守卫。
-
-**涉及文件**:
-- 修改: `ui/package.json`、相关 import
-
----
-
-### P7 — 测试
-
-#### 7.1 测试覆盖率为 0%
-
-**问题**: `tests/` 目录无真实测试代码。
-
-**方案**: 按以下优先级搭建测试框架：
-1. `providers/types.py` — `LLMResponse` 反序列化/构建
-2. `agent/tools/registry.py` — 注册/执行/错误路径
-3. `session/store.py` — CRUD + 乐观锁
-4. `agent/cancellation.py` — 取消机制
-5. `agent/heartbeat.py` — 心跳生成
-6. `context/tokens.py` — token 计数
-7. API route handler 集成测试（用 httpx.AsyncClient + FastAPI TestClient）
-
-**涉及文件**:
-- 新增: `tests/providers/`、`tests/agent/`、`tests/session/`、`tests/api/`
-
----
-
-## 四、实现顺序
-
-```
-Phase 1 ── P4.3 (依赖锁定, 先锁再改)
-         ── P1.4 (header bug, 一行修复)
-         ── P3.3 (assert 修复)
-         ── P3.1 (空响应无限循环)
-         ── P2.1 (内存泄漏)
-         │
-Phase 2 ── P1.1 (层违规, 接口定义 + 注入改造)
-         ── P1.2 (ProviderFactory)
-         ── P1.3 (LLMResponse 分裂)
-         │
-Phase 3 ── P2.2 (TOCTOU 修复)
-          ── P2.3 (锁范围缩减)
-          ── P2.4 (后台任务管理)
-          ── P5.1 (心跳 SDK 接入路由)
-          │
-Phase 4 ── P4.1 (BaseSettings)
-          ── P4.2 (config 错误处理)
-          ── P4.4 (python 版本)
-          │
-Phase 5 ── P5.2 (旧名称重命名)
-          ── P5.4 (route 拆分)
-          ── P6.x (前端修复)
-          │
-Phase 6 ── P7 (测试)
-```
-
-不出独立 Phase 的项（随对应模块改动一起修）：
-- P3.2 (queue 超时) → Phase 2
-- P3.4 (role alternation raise) → Phase 2
-- P3.5 (parse 合并) → Phase 2
-- P5.3 (type ignore) → Phase 4
-- P5.5 (MCP 工具分类) → Phase 5（随 route 拆分一起，属于存量清理）
-
----
-
-## 五、交付检查清单
-
-- [ ] P1.1: `session/` 层无 API 层 import，EventPublisher 接口注入
-- [ ] P1.2: SessionManager 不直接引用任何 Provider 具体类型
-- [ ] P1.3: `LLMResponse = SuccessLLMResponse | ErrorLLMResponse`，无歧义状态
-- [ ] P1.4: `apiRequest` 中 `Content-Type` 不会被 `options.headers` 覆盖
-- [ ] P2.1: `delete_session()` 清理 `_locks`
-- [ ] P2.2: `cancel_request` 在锁内完成状态检查
-- [ ] P2.3: streaming 期间不持有 session lock
-- [ ] P2.4: 后台任务可追踪、可等待
-- [ ] P3.1: 连续空响应达到阈值后终止
-- [ ] P3.2: Queue.get() 有超时
-- [ ] P3.3: 无 `assert` 出现在 production 路径
-- [ ] P3.4: 连续相同角色消息时 `raise ValueError("Consecutive same-role messages")`
-- [ ] P3.5: 单条 `_parse_response` 路径
-- [ ] P4.1: `ApiConfig` 继承 `BaseSettings`，支持 `LAFFYBOT_*` 环境变量
-- [ ] P4.2: 配置缺失/格式错误有用户友好提示
-- [ ] P4.3: `uv.lock` 已生成且 CI 可复现；`pydantic-settings` 已确认是否仍为运行时依赖（若 `BaseSettings` 已使用则保留，否则移入 dev）
-- [ ] P4.4: `python >= 3.12` 可安装
-- [ ] P5.1: 心跳无死代码
-- [ ] P5.2: 无 `nanobot` 字符串残留
-- [ ] P5.3: `map_provider_error` 无 `type: ignore`
-- [ ] P5.4: `api/routes.py` 拆分为 `session_routes.py`、`provider_routes.py`、`tool_routes.py`、`health_routes.py`，每个模块 ≤ 400 行
-- [ ] P5.5: `Tool` 基类有 `kind: Literal["builtin", "mcp"]` 字段，`get_definitions()` 不再依赖前缀判断
-- [ ] P6.1: SSE 流提前关闭后 UI 恢复
-- [ ] P6.2: `boundaryToolCallCounts` 跨会话正确隔离
-- [ ] P6.3: useEffect 有 cleanup
-- [ ] P6.4: devtools 在 devDependencies 中
-- [ ] P7: 至少核心路径有测试（provider types、registry、store、cancellation）
-
----
-
-## 参考文件
-
-- `docs/api.md` — API 端点规范
-- `docs/agent-runner-streaming-design.md` — AgentRunner 流式架构
-- `docs/context-builder-design.md` — ContextBuilder 架构
-- `docs/heartbeat-design.md` — 心跳机制设计
-- `docs/session-manager-design.md` — SessionManager 架构
-- `docs/session-manager-sqlite-impl.md` — SQLite 存储设计
-- `docs/ui/ui-api-interface.md` — UI-API 接口契约
+- [ ] 1. Stuck-busy 看门狗：SessionManager 后台扫描 busy 超时会话并重置，记录 WARN 日志
+- [ ] 2. SSE 错误路径：AgentRunner → SessionManager → 路由，三层 catch 不重叠，无重复 error event
+- [ ] 3. `useSseStream` hook：ChatPage SSE 逻辑独立，ChatPage 降至 200 行以下
+- [ ] 4. SSE 事件类型守卫：connectSseStream 入口校验，丢弃 + 日志
+- [ ] 5. 总请求超时：ContextConfig 新增字段 + SessionManager 包裹超时 + cancelled event
+- [ ] 6. 死代码清理：sendMessage() 和 HeartbeatManager.run() 已移除；BaseProvider.chat_completion() 确认仍被使用，保留不动
+- [ ] 7. 测试基础设施：后端 pytest 配置就绪，前端 Vitest 配置就绪，每个模块至少 1 个验证测试
