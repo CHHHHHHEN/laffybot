@@ -371,13 +371,24 @@ Manager:
 | env | TEXT(JSON, encrypted) | stdio：额外环境变量 KV 对 |
 | url | TEXT | SSE/HTTP：端点 URL |
 | headers | TEXT(JSON, encrypted) | SSE/HTTP：自定义请求头 KV 对 |
-| tool_timeout | INTEGER | 单次工具调用超时秒数（默认 30，与服务端约定一致；注意全局 `tool_timeout_s` 在 SessionManager 中默认 120，MCP 超时应小于或等于该值以确保被上层捕获） |
+| tool_timeout | INTEGER | 单次工具调用超时秒数（默认 30；注意全局 `tool_timeout_s` 在 SessionManager 中默认 120，MCP 超时应小于或等于该值以确保被上层捕获） |
 | enabled_tools | TEXT(JSON) | 工具 allow-list（默认 `["*"]` = 全部允许） |
 | disabled_tools | TEXT(JSON) | 工具 deny-list（默认 `[]` = 全部不禁用） |
 | startup_timeout | INTEGER | 连接超时秒数（默认 30） |
 | created_at / updated_at | TEXT | ISO 8601 时间戳 |
 
-### 4.7 MCP API 路由 — `laffybot/api/mcp_routes.py`
+### 4.7 MCP API 路由及 Schemas
+
+**Pydantic 请求/响应模型** — `laffybot/api/schemas.py`（遵循 `ProviderCreateRequest`/`ProviderResponse` 模式）：
+
+| Schema | 字段 |
+|--------|------|
+| `MCPServerCreateRequest` | name, transport_type (自动检测时可空), command, args, url, env, headers, tool_timeout, enabled_tools, disabled_tools, startup_timeout |
+| `MCPServerUpdateRequest` | 同上，所有字段可选 |
+| `MCPServerResponse` | id, name, transport_type, command, url, has_env, has_headers, tool_timeout, enabled_tools, disabled_tools, startup_timeout, enabled, connection_status (ready/starting/failed/disconnected), tool_count, created_at |
+| `MCPServerTestResponse` | success, message（含义同 `TestResultResponse`） |
+
+**API 路由** — `laffybot/api/mcp_routes.py`：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -385,7 +396,7 @@ Manager:
 | POST | `/api/v1/mcp/servers` | 创建 MCP 服务器配置（enabled 默认为 false，不自动连接） |
 | GET | `/api/v1/mcp/servers/{id}` | 获取服务器详情 |
 | PUT | `/api/v1/mcp/servers/{id}` | 更新服务器配置（env/headers 可选。若启用中则触发 hot_swap） |
-| DELETE | `/api/v1/mcp/servers/{id}` | 删除服务器配置（自动断开连接） |
+| DELETE | `/api/v1/mcp/servers/{id}` | 删除服务器配置（如已启用则触发 hot_swap 移除该服务器，再删除数据库记录） |
 | POST | `/api/v1/mcp/servers/{id}/enable` | 启用服务器（连接 + 初始化 + 过滤 + 注册工具） |
 | POST | `/api/v1/mcp/servers/{id}/disable` | 禁用服务器（取消注册工具 + 断开连接 + 清理进程） |
 | POST | `/api/v1/mcp/servers/{id}/toggle` | 切换启用/禁用状态 |
@@ -513,7 +524,7 @@ app shutdown (lifespan shutdown)
 | 禁用服务器时存在 in-flight 工具调用 | 工具调用在 transport.close() 时因底层连接断开而失败，结果由 AgentRunner 的 `try/except` 捕获，返回 `Error`；旧管理器 shutdown 不等待 in-flight 调用完成 |
 | 数据库不可用（McpServerStore 初始化失败） | 记录 error 日志，McpServerManager 以空配置启动（不连接任何服务器），所有 MCP 相关 API 返回空列表或错误状态 |
 | Agent 并发调用同一服务器工具 | `McpClient` 内部串行化 JSON-RPC 请求（请求-ID 严格配对，McpClient 实例内部用一个 asyncio.Lock 串行化所有请求——这不是性能取舍而是协议要求：JSON-RPC 请求-响应通过 ID 配对，若无串行化则无法确定哪个响应对应哪个请求。长耗时请求（如 `call_tool`）会阻塞同一连接上的 `ping` |
-| 服务器名重复（配置冲突） | `name` 字段 UNIQUE 约束，后创建的拒绝 |
+| 服务器名重复（配置冲突） | `name` 字段 UNIQUE 约束，后创建的拒绝。API 层捕获 `IntegrityError` 并返回 409 和 `MCP_SERVER_NAME_CONFLICT` error code |
 | 工具名冲突（跨服务器） | 前缀天然避免冲突；若仍有冲突，后注册覆盖先注册的 |
 | 调用一个不存在的服务器 | 返回 `Error: MCP server '{name}' not found` |
 
@@ -629,6 +640,7 @@ app shutdown (lifespan shutdown)
 **McpServerManager**：
 - [ ] 并行启动：`asyncio.gather(return_exceptions=True)` 隔离失败
 - [ ] `call_tool()` 按服务器名路由
+- [ ] `call_tool()` 对不存在的服务器名返回 `Error: MCP server '{name}' not found`
 - [ ] `list_all_tools()` / `list_all_resources()` 聚合
 - [ ] `hot_swap()` 原子替换，无工具窗口期（create-before-destroy：新管理器就绪后才关闭旧管理器）
 - [ ] `hot_swap()` 中的 in-flight 调用不受旧管理器 shutdown 影响（调用已完成或超时）
@@ -662,9 +674,12 @@ app shutdown (lifespan shutdown)
 - [ ] 单服务器启动失败不影响其他服务器
 - [ ] 失败服务器工具不注册
 
+**ToolRegistry 扩展**：
+- [ ] `unregister_group(prefix)` 正确移除指定前缀的所有工具
+- [ ] `get_definitions()` 正确返回 builtins + MCP 工具
+
 **透明集成**：
 - [ ] AgentRunner 无需修改即可使用 MCP 工具
-- [ ] ToolRegistry `get_definitions()` 正确返回 builtins + MCP 工具
 
 ---
 
