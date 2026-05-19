@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import Request
 
 from laffybot.agent.skills import SkillRegistry, SkillsLoader
@@ -16,6 +18,7 @@ from laffybot.providers.factory import ProviderFactory
 from laffybot.providers.openai import OpenAIProvider
 from laffybot.session.app_setting_store import AppSettingStore, SQLiteAppSettingStore
 from laffybot.session.manager import SessionManager
+from laffybot.session.mcp_server_store import McpServerStore, SQLiteMcpServerStore
 from laffybot.session.provider_store import ProviderStore, SQLiteProviderStore
 from laffybot.session.store import SessionStore, SQLiteStore
 
@@ -37,6 +40,10 @@ def build_store(config: ApiConfig) -> SessionStore:
 
 def build_provider_store(config: ApiConfig) -> ProviderStore:
     return SQLiteProviderStore(config.database_path)
+
+
+def build_mcp_server_store(config: ApiConfig) -> McpServerStore:
+    return SQLiteMcpServerStore(config.database_path)
 
 
 def build_app_setting_store(config: ApiConfig) -> AppSettingStore:
@@ -138,6 +145,14 @@ def get_store(request: Request) -> SessionStore:
 
 def get_provider_store(request: Request) -> ProviderStore:
     return request.app.state.provider_store  # type: ignore[no-any-return]
+
+
+def get_mcp_server_store(request: Request) -> McpServerStore:
+    return request.app.state.mcp_server_store  # type: ignore[no-any-return]
+
+
+def get_mcp_manager(request: Request) -> Any | None:
+    return getattr(request.app.state, "mcp_manager", None)
 
 
 def get_app_setting_store(request: Request) -> AppSettingStore:

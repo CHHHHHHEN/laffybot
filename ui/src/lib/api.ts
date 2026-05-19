@@ -649,6 +649,120 @@ export function setSkillEnabled(name: string, enabled: boolean) {
   })
 }
 
+/* ---- MCP Server APIs ---- */
+
+export interface MCPServerResponse {
+  id: string
+  name: string
+  transport_type: string
+  command: string | null
+  url: string | null
+  has_env: boolean
+  has_headers: boolean
+  tool_timeout: number
+  enabled_tools: string[]
+  disabled_tools: string[]
+  startup_timeout: number
+  enabled: boolean
+  connection_status: string
+  tool_count: number
+  created_at: string
+}
+
+export interface MCPServerCreateRequest {
+  name: string
+  transport_type?: string
+  command?: string
+  args?: string[]
+  url?: string
+  env?: Record<string, string>
+  headers?: Record<string, string>
+  tool_timeout?: number
+  enabled_tools?: string[]
+  disabled_tools?: string[]
+  startup_timeout?: number
+  enabled?: boolean
+}
+
+export interface MCPServerUpdateRequest {
+  name?: string
+  transport_type?: string
+  command?: string
+  args?: string[]
+  url?: string
+  env?: Record<string, string>
+  headers?: Record<string, string>
+  tool_timeout?: number
+  enabled_tools?: string[]
+  disabled_tools?: string[]
+  startup_timeout?: number
+  enabled?: boolean
+}
+
+export interface MCPServerTestResponse {
+  success: boolean
+  message: string
+}
+
+export function listMcpServers() {
+  return apiRequest<MCPServerResponse[]>('/api/v1/mcp/servers')
+}
+
+export function createMcpServer(data: MCPServerCreateRequest) {
+  return apiRequest<MCPServerResponse>('/api/v1/mcp/servers', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function getMcpServer(id: string) {
+  return apiRequest<MCPServerResponse>(`/api/v1/mcp/servers/${id}`)
+}
+
+export function updateMcpServer(id: string, data: MCPServerUpdateRequest) {
+  return apiRequest<MCPServerResponse>(`/api/v1/mcp/servers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteMcpServer(id: string) {
+  return apiRequest<{ status: string; server_id: string }>(
+    `/api/v1/mcp/servers/${id}`,
+    { method: 'DELETE' }
+  )
+}
+
+export function enableMcpServer(id: string) {
+  return apiRequest<MCPServerResponse>(`/api/v1/mcp/servers/${id}/enable`, {
+    method: 'POST',
+  })
+}
+
+export function disableMcpServer(id: string) {
+  return apiRequest<MCPServerResponse>(`/api/v1/mcp/servers/${id}/disable`, {
+    method: 'POST',
+  })
+}
+
+export function toggleMcpServer(id: string) {
+  return apiRequest<MCPServerResponse>(`/api/v1/mcp/servers/${id}/toggle`, {
+    method: 'POST',
+  })
+}
+
+export function testMcpServer(id: string) {
+  return apiRequest<MCPServerTestResponse>(`/api/v1/mcp/servers/${id}/test`, {
+    method: 'POST',
+  })
+}
+
+export function reconnectMcpServer(id: string) {
+  return apiRequest<MCPServerResponse>(`/api/v1/mcp/servers/${id}/reconnect`, {
+    method: 'POST',
+  })
+}
+
 /* ---- Types ---- */
 
 export type SseEventType =

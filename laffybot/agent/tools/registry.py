@@ -32,6 +32,15 @@ class ToolRegistry:
         self._disabled.discard(name)
         self._cached_definitions = None
 
+    def unregister_group(self, prefix: str) -> None:
+        """Unregister all tools whose name starts with *prefix*."""
+        to_remove = [n for n in self._tools if n.startswith(prefix)]
+        for name in to_remove:
+            self._tools.pop(name, None)
+            self._disabled.discard(name)
+        if to_remove:
+            self._cached_definitions = None
+
     def get(self, name: str) -> Tool | None:
         """Get a tool by name."""
         return self._tools.get(name)

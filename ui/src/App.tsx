@@ -5,6 +5,7 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { ProviderSettingsPage } from '@/pages/ProviderSettingsPage'
 import { ToolSettingsPage } from '@/pages/ToolSettingsPage'
 import { AdvancedSettingsPage } from '@/pages/AdvancedSettingsPage'
+import { McpSettingsPage } from '@/pages/McpSettingsPage'
 import { MemoryManagePage } from '@/pages/MemoryManagePage'
 import { SkillSettingsPage } from '@/pages/SkillSettingsPage'
 
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/settings/provider" replace /> },
           { path: 'provider', element: <ProviderSettingsPage /> },
+          { path: 'mcp', element: <McpSettingsPage /> },
           { path: 'tools', element: <ToolSettingsPage /> },
           { path: 'advanced', element: <AdvancedSettingsPage /> },
           { path: 'memories', element: <MemoryManagePage /> },

@@ -21,12 +21,14 @@ from laffybot.agent.tools.filesystem import (
     ReadFileTool,
     WriteFileTool,
 )
+from laffybot.agent.tools.mcp.manager import MCPServerConfig, McpServerManager
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.agent.tools.shell import ExecTool
 from laffybot.agent.tools.skill_view import SkillViewTool
 from laffybot.api.dependencies import (
     build_app_setting_store,
     build_context_builder,
+    build_mcp_server_store,
     build_memory_manager,
     build_memory_store,
     build_provider_store,
@@ -41,6 +43,10 @@ from laffybot.config import ApiConfig, ContextConfig
 from laffybot.memory import MemoryConfig, MemoryManager, MemoryNotFoundError
 from laffybot.providers.errors import ProviderError
 from laffybot.session.errors import SessionError
+from laffybot.session.mcp_server_store import (
+    ServerNameConflictError,
+    ServerNotFoundError,
+)
 from laffybot.session.provider_store import ProviderStore
 from laffybot.session.store import SessionStore
 
@@ -57,6 +63,7 @@ def create_app(
     config = api_config or ApiConfig()
     store_obj = store or build_store(config)
     provider_store_obj = provider_store or build_provider_store(config)
+    mcp_server_store_obj = build_mcp_server_store(config)
     app_setting_store_obj = build_app_setting_store(config)
     tool_registry_obj = tool_registry or ToolRegistry()
     memory_store_obj = build_memory_store(config)
@@ -92,10 +99,35 @@ def create_app(
         logger.info("Application started: version={}", __version__)
         await memory_manager_obj.initialize()
         await session_manager_obj.start()
+
+        # Start MCP connections in background (non-blocking)
+        mcp_manager: McpServerManager | None = None
+        try:
+            raw_configs = await mcp_server_store_obj.get_enabled_server_configs()
+            if raw_configs:
+                configs = [MCPServerConfig(**c) for c in raw_configs]
+                mcp_manager = McpServerManager(configs, tool_registry=tool_registry_obj)
+                # Start in background — don't block app startup
+                asyncio.create_task(mcp_manager.start())
+        except Exception as exc:
+            logger.warning("Failed to initialize MCP servers: {}", exc)
+            mcp_manager = None
+
+        app.state.mcp_manager = mcp_manager
+        app.state.mcp_server_store = mcp_server_store_obj
+
         yield
+
         logger.info("Application shutting down")
+        if mcp_manager is not None:
+            await mcp_manager.shutdown()
         await session_manager_obj.shutdown()
-        for obj in (provider_store_obj, store_obj, app_setting_store_obj):
+        for obj in (
+            provider_store_obj,
+            store_obj,
+            app_setting_store_obj,
+            mcp_server_store_obj,
+        ):
             try:
                 await asyncio.wait_for(obj.close(), timeout=5)
             except TimeoutError:
@@ -160,6 +192,18 @@ def create_app(
         _: Request, exc: MemoryNotFoundError
     ) -> JSONResponse:
         return error_response(404, "MEMORY_NOT_FOUND", str(exc))
+
+    @app.exception_handler(ServerNotFoundError)
+    async def mcp_server_not_found_handler(
+        _: Request, exc: ServerNotFoundError
+    ) -> JSONResponse:
+        return error_response(404, "MCP_SERVER_NOT_FOUND", str(exc))
+
+    @app.exception_handler(ServerNameConflictError)
+    async def mcp_server_name_conflict_handler(
+        _: Request, exc: ServerNameConflictError
+    ) -> JSONResponse:
+        return error_response(409, "MCP_SERVER_NAME_CONFLICT", str(exc))
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(_: Request, exc: Exception) -> JSONResponse:

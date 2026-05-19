@@ -222,3 +222,59 @@ class SkillsListResponse(BaseModel):
 
 class SkillEnabledUpdateRequest(BaseModel):
     enabled: bool
+
+
+# ── MCP Server Schemas ───────────────────────────────────────────────────
+
+
+class MCPServerCreateRequest(BaseModel):
+    name: str
+    transport_type: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    env: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
+    tool_timeout: int | None = None
+    enabled_tools: list[str] | None = None
+    disabled_tools: list[str] | None = None
+    startup_timeout: int | None = None
+    enabled: bool = False
+
+
+class MCPServerUpdateRequest(BaseModel):
+    name: str | None = None
+    transport_type: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    env: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
+    tool_timeout: int | None = None
+    enabled_tools: list[str] | None = None
+    disabled_tools: list[str] | None = None
+    startup_timeout: int | None = None
+    enabled: bool | None = None
+
+
+class MCPServerResponse(BaseModel):
+    id: str
+    name: str
+    transport_type: str
+    command: str | None = None
+    url: str | None = None
+    has_env: bool = False
+    has_headers: bool = False
+    tool_timeout: int | None = None
+    enabled_tools: list[str] = ["*"]
+    disabled_tools: list[str] = []
+    startup_timeout: int = 30
+    enabled: bool = False
+    connection_status: str = "disconnected"
+    tool_count: int = 0
+    created_at: datetime
+
+
+class MCPServerTestResponse(BaseModel):
+    success: bool
+    message: str
