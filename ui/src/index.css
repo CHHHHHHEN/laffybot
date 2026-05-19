@@ -83,8 +83,13 @@
   --color-reasoning: #f59e0b;
 }
 
-body {
+html, body {
+  height: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+body {
   font-family: var(--font-sans);
   background-color: var(--color-page-bg);
   color: var(--color-text-primary);

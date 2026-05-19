@@ -71,7 +71,7 @@ export function Sidebar() {
           sidebarOpen ? 'w-60 translate-x-0' : 'w-0 -translate-x-full lg:w-14 lg:translate-x-0'
         )}
       >
-        <div className={cn('flex flex-col h-full', sidebarOpen ? 'block' : 'lg:block hidden')}>
+        <div className={cn(sidebarOpen ? 'flex flex-col h-full' : 'hidden lg:flex lg:flex-col lg:h-full')}>
           {/* Header */}
           <div className={cn('flex items-center h-14 border-b border-[var(--color-border)] shrink-0', sidebarOpen ? 'justify-between px-4' : 'justify-center px-2')}>
             {sidebarOpen && (
