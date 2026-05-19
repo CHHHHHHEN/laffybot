@@ -38,9 +38,12 @@ The following are relevant memories from past conversations:
 {% endfor %}
 
 {% endif %}
-You are a helpful assistant.""",
+You are a helpful assistant.
+{% if skills_block %}
+{{ skills_block }}
+{% endif %}""",
         description="Jinja2 template for system prompt. When set (non-None), used as the complete prompt. "
-        "Variables: session_id, model, created_at, memories, custom vars. "
+        "Variables: session_id, model, created_at, memories, skills_block, custom vars. "
         "When None, falls back to system_prompt.",
     )
     template_variables: dict[str, Any] = Field(

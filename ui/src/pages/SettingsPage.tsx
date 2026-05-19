@@ -5,6 +5,7 @@ const tabs = [
   { to: '/settings/tools', label: '工具管理' },
   { to: '/settings/advanced', label: '高级设置' },
   { to: '/settings/memories', label: '记忆管理' },
+  { to: '/settings/skills', label: 'SKILL 设置' },
 ]
 
 export function SettingsPage() {

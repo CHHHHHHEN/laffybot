@@ -15,8 +15,7 @@ from laffybot.agent.events import SSEEvent, event_cancelled, event_error
 from laffybot.agent.runner import AgentRunner, AgentRunSpec
 from laffybot.agent.title_generator import TitleGenerator
 from laffybot.agent.tools.registry import ToolRegistry
-from laffybot.config import ContextConfig
-from laffybot.context import ContextBuilder, LLMSummarizer, SimpleContextBuilder
+from laffybot.context import ContextBuilder, LLMSummarizer
 from laffybot.context.types import RegionInfo
 from laffybot.memory import MemoryManager
 from laffybot.providers.errors import ModelNotFoundError, ProviderNotFoundError
@@ -45,8 +44,7 @@ class SessionManager:
         app_setting_store: AppSettingStore,
         tool_registry: ToolRegistry,
         provider_factory: ProviderFactory,
-        context_config: ContextConfig | None = None,
-        context_builder: ContextBuilder | None = None,
+        context_builder: ContextBuilder,
         memory_manager: MemoryManager | None = None,
         max_active_sessions: int = 3,
         tool_timeout_s: int = 120,
@@ -67,15 +65,10 @@ class SessionManager:
         self._active_tokens: dict[str, CancellationToken] = {}
         self._event_publisher = event_publisher
         self._provider_factory = provider_factory
+        self._context_builder = context_builder
         self._background_tasks: set[asyncio.Task[Any]] = set()
         self._watchdog_task: asyncio.Task[Any] | None = None
         self._watchdog_stop_event = asyncio.Event()
-
-        if context_builder is not None:
-            self._context_builder = context_builder
-        else:
-            config = context_config or ContextConfig()
-            self._context_builder = SimpleContextBuilder(config)
 
     def _lock_for(self, session_id: str) -> asyncio.Lock:
         lock = self._locks.get(session_id)
@@ -299,6 +292,7 @@ class SessionManager:
         self,
         session_id: str,
         content: str,
+        skills_block: str = "",
     ) -> AsyncGenerator[SSEEvent, None]:
         lock = self._lock_for(session_id)
         async with lock:
@@ -339,7 +333,7 @@ class SessionManager:
                 raise ModelNotFoundError(session.model_name)
 
             messages, region_info = await self._build_messages(
-                session, content, session.model_name
+                session, content, session.model_name, skills_block=skills_block
             )
             provider = await self._provider_factory.create_provider(provider_config)
 
@@ -483,6 +477,7 @@ class SessionManager:
         session: SessionInfo,
         current_message: str,
         model: str | None = None,
+        skills_block: str = "",
     ) -> tuple[list[dict[str, Any]], RegionInfo | None]:
         history = await self.store.get_messages(session.session_id)
 
@@ -500,6 +495,8 @@ class SessionManager:
                     session.session_id,
                 )
                 extra_vars["memories"] = []
+
+        extra_vars["skills_block"] = skills_block
 
         return await self._context_builder.build_messages(
             session_id=session.session_id,

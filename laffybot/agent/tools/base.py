@@ -23,7 +23,7 @@ class Tool(ABC):
 
     _param_model: type[BaseModel] | None = None
 
-    kind: Literal["builtin", "mcp"] = "builtin"
+    kind: Literal["builtin", "mcp", "skill"] = "builtin"
 
     @property
     @abstractmethod

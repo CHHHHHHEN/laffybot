@@ -601,6 +601,54 @@ export function disableTool(name: string) {
   })
 }
 
+/* ---- Skill APIs ---- */
+
+export interface SkillsPathResponse {
+  path: string | null
+}
+
+export interface SkillsPathUpdateRequest {
+  path: string
+}
+
+export interface SkillItem {
+  name: string
+  description: string
+  enabled: boolean
+  has_resources: boolean
+}
+
+export interface SkillsListResponse {
+  skills: SkillItem[]
+  skills_path: string | null
+}
+
+export interface SkillEnabledUpdateRequest {
+  enabled: boolean
+}
+
+export function getSkillsPath() {
+  return apiRequest<SkillsPathResponse>('/api/v1/settings/skills-path')
+}
+
+export function setSkillsPath(path: string) {
+  return apiRequest<SkillsListResponse>('/api/v1/settings/skills-path', {
+    method: 'PUT',
+    body: JSON.stringify({ path }),
+  })
+}
+
+export function listSkills() {
+  return apiRequest<SkillsListResponse>('/api/v1/skills')
+}
+
+export function setSkillEnabled(name: string, enabled: boolean) {
+  return apiRequest<SkillEnabledUpdateRequest>(`/api/v1/skills/${encodeURIComponent(name)}/enabled`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  })
+}
+
 /* ---- Types ---- */
 
 export type SseEventType =

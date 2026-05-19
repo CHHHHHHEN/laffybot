@@ -198,3 +198,27 @@ class ConsolidationStatusResponse(BaseModel):
     total_raw_memories: int
     consolidated_source_count: int
     unconsolidated_count: int
+
+
+class SkillsPathResponse(BaseModel):
+    path: str | None = None
+
+
+class SkillsPathUpdateRequest(BaseModel):
+    path: str
+
+
+class SkillItem(BaseModel):
+    name: str
+    description: str
+    enabled: bool
+    has_resources: bool
+
+
+class SkillsListResponse(BaseModel):
+    skills: list[SkillItem]
+    skills_path: str | None = None
+
+
+class SkillEnabledUpdateRequest(BaseModel):
+    enabled: bool

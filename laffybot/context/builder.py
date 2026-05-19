@@ -5,6 +5,8 @@ from typing import Any
 
 from loguru import logger
 
+from laffybot.agent.tools.registry import ToolRegistry
+
 from .base import ContextBuilder, TokenCounter
 from .compressor import CompressionDetector, prune_tool_outputs
 from .templates import SystemPromptTemplate
@@ -23,12 +25,14 @@ class SimpleContextBuilder(ContextBuilder):
         self,
         config: ContextConfig,
         token_counter: TokenCounter | None = None,
+        tool_registry: ToolRegistry | None = None,
     ):
         """Initialize context builder.
 
         Args:
             config: Configuration for context building.
             token_counter: Token counting strategy. Defaults to UsageBasedTokenCounter.
+            tool_registry: Optional ToolRegistry for kind-based tool output protection.
         """
         self._config = config
         self._token_counter = token_counter or UsageBasedTokenCounter()
@@ -36,6 +40,7 @@ class SimpleContextBuilder(ContextBuilder):
         self._compression_detector = CompressionDetector(
             config, ApproximateTokenCounter()
         )
+        self._tool_registry = tool_registry
 
     @property
     def config(self) -> ContextConfig:
@@ -103,7 +108,7 @@ class SimpleContextBuilder(ContextBuilder):
         """
         # Stage 0: Prune tool outputs
         try:
-            messages = prune_tool_outputs(messages, self._config)
+            messages = prune_tool_outputs(messages, self._config, self._tool_registry)
         except Exception:
             logger.warning("Tool output pruning failed: session_id={}", session_id)
 

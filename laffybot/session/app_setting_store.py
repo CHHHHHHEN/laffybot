@@ -79,6 +79,22 @@ class AppSettingStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def get_skills_path(self) -> str | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def set_skills_path(self, path: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_enabled_skills(self) -> list[str]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def set_enabled_skills(self, names: list[str]) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     async def close(self) -> None:
         raise NotImplementedError
 
@@ -102,7 +118,7 @@ class SQLiteAppSettingStore(AppSettingStore):
             await self._db.commit()
         return self._db
 
-    async def _get(self, key: str) -> ProviderModelPair | None:
+    async def _get_raw(self, key: str) -> str | None:
         db = await self._ensure_db()
         async with db.execute(
             "SELECT value FROM app_settings WHERE key = ?", (key,)
@@ -110,8 +126,23 @@ class SQLiteAppSettingStore(AppSettingStore):
             row = await cursor.fetchone()
         if row is None:
             return None
+        val: str = row["value"]
+        return val
+
+    async def _set_raw(self, key: str, value: str) -> None:
+        db = await self._ensure_db()
+        await db.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        await db.commit()
+
+    async def _get(self, key: str) -> ProviderModelPair | None:
+        raw = await self._get_raw(key)
+        if raw is None:
+            return None
         try:
-            data = json.loads(row["value"])
+            data = json.loads(raw)
             return ProviderModelPair(
                 provider_id=data["provider_id"],
                 model_name=data["model_name"],
@@ -121,15 +152,10 @@ class SQLiteAppSettingStore(AppSettingStore):
             return None
 
     async def _set(self, key: str, provider_id: str, model_name: str) -> None:
-        db = await self._ensure_db()
         value = json.dumps(
             {"provider_id": provider_id, "model_name": model_name}, ensure_ascii=False
         )
-        await db.execute(
-            "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
-            (key, value),
-        )
-        await db.commit()
+        await self._set_raw(key, value)
 
     async def _delete(self, key: str) -> None:
         db = await self._ensure_db()
@@ -173,6 +199,25 @@ class SQLiteAppSettingStore(AppSettingStore):
 
     async def delete_consolidation_model(self) -> None:
         await self._delete("consolidation_model")
+
+    async def get_skills_path(self) -> str | None:
+        return await self._get_raw("skills_path")
+
+    async def set_skills_path(self, path: str) -> None:
+        await self._set_raw("skills_path", path)
+
+    async def get_enabled_skills(self) -> list[str]:
+        raw = await self._get_raw("enabled_skills")
+        if raw is None:
+            return []
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, list) else []
+        except json.JSONDecodeError:
+            return []
+
+    async def set_enabled_skills(self, names: list[str]) -> None:
+        await self._set_raw("enabled_skills", json.dumps(names, ensure_ascii=False))
 
     async def close(self) -> None:
         if self._db is not None:

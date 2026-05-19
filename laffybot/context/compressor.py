@@ -6,6 +6,7 @@ from typing import Any
 
 from loguru import logger
 
+from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
 from laffybot.context.tokens import ApproximateTokenCounter
 from laffybot.context.types import RegionInfo
@@ -43,17 +44,19 @@ Output the summary using the structured format (Goal, Constraints & Preferences,
 def prune_tool_outputs(
     messages: list[dict[str, Any]],
     config: ContextConfig,
+    tool_registry: ToolRegistry | None = None,
 ) -> list[dict[str, Any]]:
     """Synchronously prune tool output messages that exceed character limit.
 
     Operates in memory only — does not modify persisted messages.
-    Protected tools (e.g. "skill") are not pruned.
+    Protected tools (matched by ``Tool.kind`` via registry, falling back to
+    message name) are not pruned.
     """
     max_chars = config.compress_tool_output_max_chars
     if max_chars <= 0:
         return messages
 
-    protected = set(config.compress_protected_tools)
+    protected_kinds = set(config.compress_protected_tools)
 
     result: list[dict[str, Any]] = []
     for msg in messages:
@@ -62,7 +65,15 @@ def prune_tool_outputs(
             continue
 
         tool_name = msg.get("name", "")
-        if tool_name in protected:
+
+        # Check by Tool.kind first, then fall back to name-based matching
+        is_protected = False
+        if tool_name and tool_registry is not None:
+            tool = tool_registry.get(tool_name)
+            if tool is not None:
+                is_protected = getattr(tool, "kind", "builtin") in protected_kinds
+
+        if is_protected or tool_name in protected_kinds:
             result.append(msg)
             continue
 

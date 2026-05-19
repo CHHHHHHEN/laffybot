@@ -12,6 +12,7 @@ from loguru import logger
 
 from laffybot.agent.events import SSEEvent, event_ping
 from laffybot.agent.heartbeat import HeartbeatManager
+from laffybot.agent.skills import SkillRegistry, SkillsLoader
 from laffybot.api.dependencies import (
     DefaultProviderFactory,
     get_app_setting_store,
@@ -19,7 +20,10 @@ from laffybot.api.dependencies import (
     get_memory_store,
     get_provider_store,
     get_session_manager,
+    get_skill_registry,
+    get_skills_loader,
     get_store,
+    render_skills_block,
 )
 from laffybot.api.event_bus import GlobalEvent, get_event_bus
 from laffybot.api.schemas import (
@@ -103,13 +107,16 @@ async def _stream_session_events(
     manager: SessionManager,
     session_id: str,
     content: str,
+    skills_block: str = "",
     last_event_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     del last_event_id
     event_index = 0
     heartbeat = HeartbeatManager()
 
-    ait = manager.send_message(session_id, content).__aiter__()
+    ait = manager.send_message(
+        session_id, content, skills_block=skills_block
+    ).__aiter__()
     heartbeat.reset()
 
     try:
@@ -220,6 +227,9 @@ async def send_message(
     session_id: str,
     payload: MessageCreateRequest,
     manager: SessionManager = Depends(get_session_manager),
+    app_setting_store: AppSettingStore = Depends(get_app_setting_store),
+    skills_loader: SkillsLoader = Depends(get_skills_loader),
+    skill_registry: SkillRegistry = Depends(get_skill_registry),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
     logger.info(
@@ -231,7 +241,12 @@ async def send_message(
     if session.status == "busy":
         raise SessionBusyError(session_id, session.current_request_id)
 
-    stream = _stream_session_events(manager, session_id, payload.content, last_event_id)
+    skills_block = await render_skills_block(
+        app_setting_store, skills_loader, skill_registry
+    )
+    stream = _stream_session_events(
+        manager, session_id, payload.content, skills_block, last_event_id
+    )
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",

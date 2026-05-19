@@ -23,12 +23,16 @@ from laffybot.agent.tools.filesystem import (
 )
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.agent.tools.shell import ExecTool
+from laffybot.agent.tools.skill_view import SkillViewTool
 from laffybot.api.dependencies import (
     build_app_setting_store,
+    build_context_builder,
     build_memory_manager,
     build_memory_store,
     build_provider_store,
     build_session_manager,
+    build_skill_registry,
+    build_skills_loader,
     build_store,
 )
 from laffybot.api.errors import error_response, map_provider_error, map_session_error
@@ -56,20 +60,29 @@ def create_app(
     app_setting_store_obj = build_app_setting_store(config)
     tool_registry_obj = tool_registry or ToolRegistry()
     memory_store_obj = build_memory_store(config)
-    memory_manager_obj = memory_manager or build_memory_manager(
+    memory_manager_obj = build_memory_manager(
         memory_config, store=memory_store_obj, db_path=config.database_path
+    )
+    skills_loader_obj = build_skills_loader()
+    skill_registry_obj = build_skill_registry(app_setting_store_obj)
+    context_builder_obj = build_context_builder(
+        context_config=context_config,
+        tool_registry=tool_registry_obj,
     )
     tool_registry_obj.register(ReadFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(WriteFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(EditFileTool(workspace=Path.cwd()))
     tool_registry_obj.register(ListDirTool(workspace=Path.cwd()))
     tool_registry_obj.register(ExecTool(working_dir=str(Path.cwd())))
+    tool_registry_obj.register(
+        SkillViewTool(loader=skills_loader_obj, registry=skill_registry_obj)
+    )
     session_manager_obj = build_session_manager(
         store=store_obj,
         provider_store=provider_store_obj,
         app_setting_store=app_setting_store_obj,
         tool_registry=tool_registry_obj,
-        context_config=context_config,
+        context_builder=context_builder_obj,
         memory_manager=memory_manager_obj,
         max_active_sessions=config.max_active_sessions,
     )
@@ -111,6 +124,8 @@ def create_app(
     app.state.memory_manager = memory_manager_obj
     app.state.memory_store = memory_store_obj
     app.state.context_config = context_config or ContextConfig()
+    app.state.skills_loader = skills_loader_obj
+    app.state.skill_registry = skill_registry_obj
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(

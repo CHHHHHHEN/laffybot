@@ -6,6 +6,7 @@ import { ProviderSettingsPage } from '@/pages/ProviderSettingsPage'
 import { ToolSettingsPage } from '@/pages/ToolSettingsPage'
 import { AdvancedSettingsPage } from '@/pages/AdvancedSettingsPage'
 import { MemoryManagePage } from '@/pages/MemoryManagePage'
+import { SkillSettingsPage } from '@/pages/SkillSettingsPage'
 
 const router = createBrowserRouter([
   {
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
           { path: 'tools', element: <ToolSettingsPage /> },
           { path: 'advanced', element: <AdvancedSettingsPage /> },
           { path: 'memories', element: <MemoryManagePage /> },
+          { path: 'skills', element: <SkillSettingsPage /> },
         ],
       },
     ],
