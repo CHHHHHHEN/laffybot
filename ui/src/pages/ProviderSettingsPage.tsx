@@ -6,7 +6,7 @@ import { useProviders, useCreateProvider, useUpdateProvider, useDeleteProvider, 
 import { ProviderForm } from '@/components/settings/ProviderForm'
 import { ModelList } from '@/components/settings/ModelList'
 import { Button } from '@/components/ui/Button'
-import { useToastStore } from '@/stores/toast-store'
+import { toast } from 'sonner'
 
 export function ProviderSettingsPage() {
   const { data: providers = [], isLoading } = useProviders()
@@ -35,22 +35,22 @@ export function ProviderSettingsPage() {
   const handleCreate = async (data: { name: string; base_url: string; api_key: string; extra_headers: Record<string, string> }) => {
     await createProvider.mutateAsync(data)
     setShowForm(false)
-    useToastStore.getState().addToast('success', '提供商创建成功')
+    toast.success('提供商创建成功')
   }
 
   const handleUpdate = async (data: { name: string; base_url: string; api_key: string; extra_headers: Record<string, string> }) => {
     if (!editingId) return
     await updateProvider.mutateAsync({ id: editingId, data })
     setEditingId(null)
-    useToastStore.getState().addToast('success', '提供商更新成功')
+    toast.success('提供商更新成功')
   }
 
   const handleDelete = async (id: string) => {
     try {
       await deleteProvider.mutateAsync(id)
-      useToastStore.getState().addToast('success', '提供商已删除')
+      toast.success('提供商已删除')
     } catch {
-      useToastStore.getState().addToast('error', '删除提供商失败')
+      toast.error('删除提供商失败')
     }
   }
 
@@ -59,12 +59,12 @@ export function ProviderSettingsPage() {
     try {
       const result = await api.testProvider(id)
       if (result.success) {
-        useToastStore.getState().addToast('success', `连接成功 (${result.latency_ms}ms)`)
+        toast.success(`连接成功 (${result.latency_ms}ms)`)
       } else {
-        useToastStore.getState().addToast('error', `连接失败: ${result.message}`)
+        toast.error(`连接失败: ${result.message}`)
       }
     } catch {
-      useToastStore.getState().addToast('error', '连接测试失败')
+      toast.error('连接测试失败')
     } finally {
       setTestingId(null)
     }
@@ -79,9 +79,9 @@ export function ProviderSettingsPage() {
   const handleSetDefault = async (providerId: string, modelName: string) => {
     try {
       await setDefaultSessionModel.mutateAsync({ provider_id: providerId, model_name: modelName })
-      useToastStore.getState().addToast('success', '已设为默认模型')
+      toast.success('已设为默认模型')
     } catch {
-      useToastStore.getState().addToast('error', '设置默认模型失败')
+      toast.error('设置默认模型失败')
     }
   }
 

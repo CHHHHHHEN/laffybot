@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Settings2, Loader2, Check, X, Brain, MessageSquareText, Combine } from 'lucide-react'
 import { useProviders, useModels, useSummaryModel, useSetSummaryModel, useClearSummaryModel, useExtractModel, useSetExtractModel, useClearExtractModel, useConsolidationModel, useSetConsolidationModel, useClearConsolidationModel, useSystemPrompt, useSetSystemPrompt } from '@/hooks/use-providers'
 import { Button } from '@/components/ui/Button'
-import { useToastStore } from '@/stores/toast-store'
+import { toast } from 'sonner'
 
 function ProviderModelSelector({
   currentConfig,
@@ -30,7 +30,7 @@ function ProviderModelSelector({
 
   const handleSave = async () => {
     if (!selectedProviderId || !selectedModelName) {
-      useToastStore.getState().addToast('error', '请选择提供商和模型')
+      toast.error('请选择提供商和模型')
       return
     }
     await onSave(selectedProviderId, selectedModelName)
@@ -147,9 +147,9 @@ export function AdvancedSettingsPage() {
     setIsSavingSummary(true)
     try {
       await setSummaryModel.mutateAsync({ provider_id: providerId, model_name: modelName })
-      useToastStore.getState().addToast('success', '总结模型配置已保存')
+      toast.success('总结模型配置已保存')
     } catch {
-      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+      toast.error('保存失败，请稍后重试')
     } finally {
       setIsSavingSummary(false)
     }
@@ -159,9 +159,9 @@ export function AdvancedSettingsPage() {
     setIsClearingSummary(true)
     try {
       await clearSummaryModel.mutateAsync()
-      useToastStore.getState().addToast('success', '已清除总结模型配置')
+      toast.success('已清除总结模型配置')
     } catch {
-      useToastStore.getState().addToast('error', '清除失败，请稍后重试')
+      toast.error('清除失败，请稍后重试')
     } finally {
       setIsClearingSummary(false)
     }
@@ -171,9 +171,9 @@ export function AdvancedSettingsPage() {
     setIsSavingExtract(true)
     try {
       await setExtractModel.mutateAsync({ provider_id: providerId, model_name: modelName })
-      useToastStore.getState().addToast('success', '记忆提取模型配置已保存')
+      toast.success('记忆提取模型配置已保存')
     } catch {
-      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+      toast.error('保存失败，请稍后重试')
     } finally {
       setIsSavingExtract(false)
     }
@@ -183,9 +183,9 @@ export function AdvancedSettingsPage() {
     setIsClearingExtract(true)
     try {
       await clearExtractModel.mutateAsync()
-      useToastStore.getState().addToast('success', '已清除记忆提取模型配置')
+      toast.success('已清除记忆提取模型配置')
     } catch {
-      useToastStore.getState().addToast('error', '清除失败，请稍后重试')
+      toast.error('清除失败，请稍后重试')
     } finally {
       setIsClearingExtract(false)
     }
@@ -195,9 +195,9 @@ export function AdvancedSettingsPage() {
     setIsSavingConsolidation(true)
     try {
       await setConsolidationModel.mutateAsync({ provider_id: providerId, model_name: modelName })
-      useToastStore.getState().addToast('success', '记忆归并模型配置已保存')
+      toast.success('记忆归并模型配置已保存')
     } catch {
-      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+      toast.error('保存失败，请稍后重试')
     } finally {
       setIsSavingConsolidation(false)
     }
@@ -207,9 +207,9 @@ export function AdvancedSettingsPage() {
     setIsClearingConsolidation(true)
     try {
       await clearConsolidationModel.mutateAsync()
-      useToastStore.getState().addToast('success', '已清除记忆归并模型配置')
+      toast.success('已清除记忆归并模型配置')
     } catch {
-      useToastStore.getState().addToast('error', '清除失败，请稍后重试')
+      toast.error('清除失败，请稍后重试')
     } finally {
       setIsClearingConsolidation(false)
     }
@@ -219,9 +219,9 @@ export function AdvancedSettingsPage() {
     setIsSavingSystemPrompt(true)
     try {
       await setSystemPrompt.mutateAsync(systemPromptValue)
-      useToastStore.getState().addToast('success', '系统提示已保存')
+      toast.success('系统提示已保存')
     } catch {
-      useToastStore.getState().addToast('error', '保存失败，请稍后重试')
+      toast.error('保存失败，请稍后重试')
     } finally {
       setIsSavingSystemPrompt(false)
     }

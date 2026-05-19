@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import type { ConnectionStatus } from '@/stores/chat-store'
 
 interface ConnectionStatusBannerProps {
@@ -16,7 +17,7 @@ export function ConnectionStatusBanner({ status }: ConnectionStatusBannerProps) 
   if (!c.show) return null
 
   return (
-    <div className={`${c.color} text-white text-xs text-center py-1 px-4`}>
+    <div className={cn(c.color, 'text-white text-xs text-center py-1 px-4')}>
       {c.label}
     </div>
   )

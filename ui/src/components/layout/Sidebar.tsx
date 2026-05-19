@@ -6,7 +6,8 @@ import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2, Loader2, Archive,
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
 import { useSessions, useArchiveSession, useUnarchiveSession, useDeleteSession } from '@/hooks/use-sessions'
-import { useToastStore } from '@/stores/toast-store'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUiStore()
@@ -29,7 +30,7 @@ export function Sidebar() {
     try {
       await archiveSession.mutateAsync(sessionId)
     } catch (err) {
-      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '归档失败')
+      toast.error(err instanceof Error ? err.message : '归档失败')
     }
   }
 
@@ -37,7 +38,7 @@ export function Sidebar() {
     try {
       await unarchiveSession.mutateAsync(sessionId)
     } catch (err) {
-      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '取消归档失败')
+      toast.error(err instanceof Error ? err.message : '取消归档失败')
     }
   }
 
@@ -47,7 +48,7 @@ export function Sidebar() {
       await deleteSession.mutateAsync(deleteTarget.sessionId)
       navigate('/chat')
     } catch {
-      useToastStore.getState().addToast('error', '删除会话失败')
+      toast.error('删除会话失败')
     }
     setDeleteTarget(null)
   }
@@ -63,16 +64,16 @@ export function Sidebar() {
       )}
 
       <aside
-        className={`
-          fixed lg:static inset-y-0 left-0 z-[var(--z-sidebar)]
-          flex flex-col bg-[var(--color-page-bg)] border-r border-[var(--color-border)]
-          transition-all duration-250 ease-in-out
-          ${sidebarOpen ? 'w-60 translate-x-0' : 'w-0 -translate-x-full lg:w-14 lg:translate-x-0'}
-        `}
+        className={cn(
+          'fixed lg:static inset-y-0 left-0 z-[var(--z-sidebar)]',
+          'flex flex-col bg-[var(--color-page-bg)] border-r border-[var(--color-border)]',
+          'transition-all duration-250 ease-in-out',
+          sidebarOpen ? 'w-60 translate-x-0' : 'w-0 -translate-x-full lg:w-14 lg:translate-x-0'
+        )}
       >
-        <div className={`flex flex-col h-full ${sidebarOpen ? 'block' : 'lg:block hidden'}`}>
+        <div className={cn('flex flex-col h-full', sidebarOpen ? 'block' : 'lg:block hidden')}>
           {/* Header */}
-          <div className={`flex items-center h-14 border-b border-[var(--color-border)] shrink-0 ${sidebarOpen ? 'justify-between px-4' : 'justify-center px-2'}`}>
+          <div className={cn('flex items-center h-14 border-b border-[var(--color-border)] shrink-0', sidebarOpen ? 'justify-between px-4' : 'justify-center px-2')}>
             {sidebarOpen && (
               <span className="font-semibold text-base text-[var(--color-text-primary)]">
                 Laffybot
@@ -95,7 +96,7 @@ export function Sidebar() {
             <Button
               variant="ghost"
               onClick={handleCreateSession}
-              className={`w-full ${sidebarOpen ? 'justify-start' : 'justify-center'}`}
+              className={cn('w-full', sidebarOpen ? 'justify-start' : 'justify-center')}
               aria-label="新建会话"
             >
               <MessageSquarePlus size={18} />
@@ -124,9 +125,11 @@ export function Sidebar() {
                     <div
                       key={session.session_id}
                       onClick={() => navigate(`/chat/${session.session_id}`)}
-                      className={`group relative flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150 text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)] ${
-                        isArchived ? 'opacity-60 hover:opacity-100' : ''
-                      }`}
+                      className={cn(
+                        'group relative flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-150',
+                        'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]',
+                        isArchived && 'opacity-60 hover:opacity-100'
+                      )}
                     >
                       {isArchived && <Archive size={14} className="shrink-0" />}
                       <div className="flex-1 truncate">

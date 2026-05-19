@@ -1,4 +1,5 @@
 import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes } from 'react'
+import { cn } from '@/lib/utils'
 
 const baseClass =
   'rounded-md border border-[var(--color-border)] bg-[var(--color-page-bg)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] outline-none focus:border-[var(--color-brand)] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed'
@@ -15,7 +16,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <input
         ref={ref}
-        className={`${baseClass} ${sizeClass} ${className}`}
+        className={cn(baseClass, sizeClass, className)}
         {...props}
       />
     )
@@ -33,7 +34,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <textarea
         ref={ref}
-        className={`${baseClass} ${sizeClass} resize-none ${className}`}
+        className={cn(baseClass, sizeClass, 'resize-none', className)}
         {...props}
       />
     )
@@ -51,7 +52,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <select
         ref={ref}
-        className={`${baseClass} ${sizeClass} ${className}`}
+        className={cn(baseClass, sizeClass, className)}
         {...props}
       >
         {children}

@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { format } from 'date-fns'
+import { toast } from 'sonner'
 import { Loader2, Search, Trash2, MessageSquare, ChevronLeft, Database, Layers, RefreshCw } from 'lucide-react'
 import { useMemories, useMemory, useMemorySource, useDeleteMemory, useConsolidationStatus, useConsolidatedMemory, useTriggerConsolidation } from '@/hooks/use-memories'
 import { Button } from '@/components/ui/Button'
-import { useToastStore } from '@/stores/toast-store'
 
 function ConsolidationSection() {
   const { data: status, isLoading: statusLoading } = useConsolidationStatus()
@@ -17,12 +18,13 @@ function ConsolidationSection() {
     setIsTriggering(true)
     try {
       const result = await triggerConsolidation.mutateAsync()
-      useToastStore.getState().addToast(
-        result.performed ? 'success' : 'info',
-        result.performed ? '整合完成' : result.message
-      )
+      if (result.performed) {
+        toast.success('整合完成')
+      } else {
+        toast.info(result.message)
+      }
     } catch {
-      useToastStore.getState().addToast('error', '触发整合失败')
+      toast.error('触发整合失败')
     } finally {
       setIsTriggering(false)
     }
@@ -138,7 +140,7 @@ function MemoryDetailView({ memoryId, onBack }: { memoryId: string; onBack: () =
           {memory.content}
         </div>
         <div className="mt-3 text-xs text-[var(--color-text-secondary)]">
-          创建于 {new Date(memory.created_at).toLocaleString()}
+          创建于 {format(new Date(memory.created_at), 'yyyy-MM-dd HH:mm')}
         </div>
       </div>
 
@@ -190,9 +192,9 @@ export function MemoryManagePage() {
   const handleDelete = async (memoryId: string) => {
     try {
       await deleteMemory.mutateAsync(memoryId)
-      useToastStore.getState().addToast('success', '记忆已删除')
+      toast.success('记忆已删除')
     } catch {
-      useToastStore.getState().addToast('error', '删除失败')
+      toast.error('删除失败')
     }
   }
 
@@ -280,7 +282,7 @@ export function MemoryManagePage() {
                   </button>
                 </div>
                 <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
-                  {new Date(memory.created_at).toLocaleDateString()}
+                  {format(new Date(memory.created_at), 'yyyy-MM-dd')}
                 </div>
               </div>
             ))}

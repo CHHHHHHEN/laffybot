@@ -342,10 +342,6 @@ export function createProvider(data: ProviderCreateRequest) {
   })
 }
 
-export function getProvider(id: string) {
-  return apiRequest<ProviderDetailResponse>(`/api/v1/providers/${id}`)
-}
-
 export function updateProvider(id: string, data: ProviderUpdateRequest) {
   return apiRequest<ProviderResponse>(`/api/v1/providers/${id}`, {
     method: 'PUT',
@@ -578,12 +574,6 @@ export function triggerConsolidation() {
   return apiRequest<{ performed: boolean; message: string }>('/api/v1/consolidated-memory/trigger', {
     method: 'POST',
   })
-}
-
-/* ---- Health API ---- */
-
-export function checkHealth() {
-  return apiRequest<{ status: string; version: string; timestamp: string }>('/api/v1/health')
 }
 
 /* ---- Tools API ---- */

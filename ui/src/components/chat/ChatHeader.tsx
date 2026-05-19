@@ -8,7 +8,7 @@ import type { SessionResponse } from '@/lib/api'
 import { useUpdateSessionTitle } from '@/hooks/use-update-session-title'
 import { useArchiveSession, useUnarchiveSession, useUpdateSessionModel } from '@/hooks/use-sessions'
 import { useProviders, useModels } from '@/hooks/use-providers'
-import { useToastStore } from '@/stores/toast-store'
+import { toast } from 'sonner'
 
 interface ChatHeaderProps {
   session: SessionResponse | null
@@ -61,7 +61,7 @@ export function ChatHeader({ session }: ChatHeaderProps) {
     try {
       await archiveSession.mutateAsync(session.session_id)
     } catch (err) {
-      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '归档失败')
+      toast.error(err instanceof Error ? err.message : '归档失败')
     }
   }
 
@@ -70,7 +70,7 @@ export function ChatHeader({ session }: ChatHeaderProps) {
     try {
       await unarchiveSession.mutateAsync(session.session_id)
     } catch (err) {
-      useToastStore.getState().addToast('error', err instanceof Error ? err.message : '取消归档失败')
+      toast.error(err instanceof Error ? err.message : '取消归档失败')
     }
   }
 
@@ -89,7 +89,7 @@ export function ChatHeader({ session }: ChatHeaderProps) {
       { sessionId: session.session_id, data: { provider_id: newProviderId, model_name: firstModel } },
       {
         onError: () => {
-          useToastStore.getState().addToast('error', '切换模型失败')
+          toast.error('切换模型失败')
         },
         onSettled: () => setModelSwitching(false),
       }
@@ -103,7 +103,7 @@ export function ChatHeader({ session }: ChatHeaderProps) {
       { sessionId: session.session_id, data: { provider_id: session.provider_id, model_name: newModelName } },
       {
         onError: () => {
-          useToastStore.getState().addToast('error', '切换模型失败')
+          toast.error('切换模型失败')
         },
         onSettled: () => setModelSwitching(false),
       }

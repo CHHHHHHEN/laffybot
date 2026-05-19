@@ -1,5 +1,7 @@
-import { useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ModalProps {
   isOpen: boolean
@@ -16,40 +18,32 @@ const sizeClasses = {
 }
 
 export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div
-        className={`relative bg-[var(--color-page-bg)] rounded-lg shadow-xl w-full ${sizeClasses[size]} mx-4 p-6`}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] transition-colors duration-150"
-          aria-label="关闭"
+    <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[var(--z-modal)]" />
+        <Dialog.Content
+          className={cn(
+            'fixed z-[var(--z-modal)] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2',
+            'bg-[var(--color-page-bg)] rounded-lg shadow-xl w-full mx-4 p-6',
+            'focus:outline-none',
+            sizeClasses[size]
+          )}
         >
-          <X size={16} />
-        </button>
-        {title && (
-          <h3 className="text-h3 font-semibold text-[var(--color-text-primary)] mb-4">
-            {title}
-          </h3>
-        )}
-        {children}
-      </div>
-    </div>
+          <Dialog.Close
+            className="absolute top-4 right-4 p-1 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] transition-colors duration-150"
+            aria-label="关闭"
+          >
+            <X size={16} />
+          </Dialog.Close>
+          {title && (
+            <Dialog.Title className="text-h3 font-semibold text-[var(--color-text-primary)] mb-4">
+              {title}
+            </Dialog.Title>
+          )}
+          {children}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

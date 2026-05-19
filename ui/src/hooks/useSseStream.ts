@@ -4,7 +4,7 @@ import { useChatStore, type ConnectionStatus } from '@/stores/chat-store'
 import { connectSseStream } from '@/lib/sse'
 import type { SseEvent } from '@/lib/sse'
 import { cancelRequest, ApiError } from '@/lib/api'
-import { useToastStore } from '@/stores/toast-store'
+import { toast } from 'sonner'
 import { getOrCreateAbortController, abortSession } from '@/lib/abort-manager'
 import { useCreateSession, useUpdateSessionStatus } from '@/hooks/use-sessions'
 
@@ -202,7 +202,7 @@ export function useSseStream(
         } catch (err) {
           submittingRef.current = false
           const message = err instanceof Error ? err.message : '创建会话失败'
-          useToastStore.getState().addToast('error', message)
+          toast.error(message)
           options?.onError?.(message)
           return
         }
@@ -243,7 +243,7 @@ export function useSseStream(
       } catch {
         if (abortController.signal.aborted) return
         const message = '发送消息失败，请重试'
-        useToastStore.getState().addToast('error', message)
+        toast.error(message)
         store.setSessionConnectionStatus(currentSessionId, 'error')
         store.stopStreaming(currentSessionId)
         store.setSessionRequestId(currentSessionId, null)

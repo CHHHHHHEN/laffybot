@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { Sidebar } from './Sidebar'
-import { ToastContainer } from '@/components/ui/Toast'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useGlobalEvents } from '@/hooks/use-global-events'
@@ -44,7 +44,7 @@ export function AppShell() {
           <Outlet />
         </ErrorBoundary>
       </main>
-      <ToastContainer />
+      <Toaster position="top-center" />
     </div>
   )
 }

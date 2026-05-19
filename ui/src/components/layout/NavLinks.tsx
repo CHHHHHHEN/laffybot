@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { MessageSquare, Settings } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const links = [
   { to: '/chat', label: '聊天', icon: MessageSquare },
@@ -19,11 +20,13 @@ export function NavLinks({ collapsed = false }: NavLinksProps) {
           to={link.to}
           end={link.to === '/chat'}
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150 ${
+            cn(
+              'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150',
               isActive
                 ? 'bg-[var(--color-hover-bg)] text-[var(--color-text-primary)] font-medium'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]'
-            } ${collapsed ? 'justify-center px-2' : ''}`
+                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-text-primary)]',
+              collapsed && 'justify-center px-2'
+            )
           }
         >
           <link.icon size={20} />

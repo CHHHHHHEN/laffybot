@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
+import { cn } from '@/lib/utils'
 
 type ButtonVariant = 'brand' | 'ghost' | 'danger' | 'icon' | 'link'
 type ButtonSize = 'sm' | 'md' | 'icon'
@@ -30,7 +31,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={`inline-flex items-center justify-center gap-2 transition-colors duration-150 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+        className={cn('inline-flex items-center justify-center gap-2 transition-colors duration-150', variantClasses[variant], sizeClasses[size], className)}
         {...props}
       >
         {children}
