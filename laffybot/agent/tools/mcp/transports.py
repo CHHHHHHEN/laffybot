@@ -8,6 +8,7 @@ import os
 import platform
 import signal
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 
 import httpx
 import httpx_sse
@@ -22,6 +23,16 @@ class TransportError(Exception):
 
 class Transport(ABC):
     """Abstract transport — connect, send/receive JSON strings, close."""
+
+    on_disconnect: Callable[[], Awaitable[None]] | None = None
+
+    async def _call_on_disconnect(self) -> None:
+        """Safely invoke the on_disconnect callback if set."""
+        if self.on_disconnect is not None:
+            try:
+                await self.on_disconnect()
+            except Exception as exc:
+                logger.error("Disconnect callback failed: {}", exc)
 
     @abstractmethod
     async def connect(self) -> None: ...
@@ -126,6 +137,7 @@ class StdioTransport(Transport):
         for _ in range(100):
             line = await self._reader.readline()
             if not line:
+                await self._call_on_disconnect()
                 raise TransportError(
                     "Stdio process closed stdout without sending a valid JSON-RPC message. "
                     "Check stderr log for details."
@@ -159,6 +171,7 @@ class StdioTransport(Transport):
             pass
         self._process = None
         self._reader = None
+        await self._call_on_disconnect()
 
 
 # ── SSE Transport ────────────────────────────────────────────────────────
@@ -257,6 +270,7 @@ class SseTransport(Transport):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        await self._call_on_disconnect()
 
     async def _read_sse(self) -> None:
         try:
@@ -276,6 +290,7 @@ class SseTransport(Transport):
             if self._connected:
                 logger.error("SSE read task error: {}", exc)
         finally:
+            await self._call_on_disconnect()
             await self._lines.put(None)  # signal end
 
 
@@ -343,4 +358,5 @@ class StreamableHttpTransport(Transport):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        await self._call_on_disconnect()
         await self._responses.put(None)

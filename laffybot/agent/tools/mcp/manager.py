@@ -16,12 +16,14 @@ from laffybot.agent.tools.mcp.transports import (
     StdioTransport,
     StreamableHttpTransport,
     Transport,
+    TransportError,
 )
 from laffybot.agent.tools.mcp.wrappers import (
     McpPromptTool,
     McpResourceTool,
     McpToolCall,
     ToolFilter,
+    normalise_server_name,
 )
 
 
@@ -170,6 +172,7 @@ class McpServerManager:
             transport = create_transport(cfg)
             client.transport = transport
             await asyncio.wait_for(transport.connect(), timeout=cfg.startup_timeout)
+            transport.on_disconnect = lambda: self._on_server_disconnected(server_name)
 
             mcp_client = McpClient(transport)
             client.client = mcp_client
@@ -237,7 +240,31 @@ class McpServerManager:
                     client.transport = None
                 if client.client is not None:
                     client.client = None
+                await self._on_server_disconnected(server_name)
         return client.error
+
+    async def _on_server_disconnected(self, server_name: str) -> None:
+        """统一清理入口：断开后更新状态、注销工具、取消运行中的任务。"""
+        client = self._clients.get(server_name)
+        if client is None:
+            logger.debug("Server {} already removed, skip cleanup", server_name)
+            return
+
+        if client.status == ServerStatus.disconnected:
+            logger.debug("Server {} already disconnected, skip cleanup", server_name)
+            return
+
+        logger.info("MCP server '{}' disconnected, cleaning up tools", server_name)
+        client.status = ServerStatus.disconnected
+        self._unregister_server_tools(server_name)
+
+        task = self._server_tasks.get(server_name)
+        if task is not None and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     async def shutdown(self) -> None:
         """Cancel all tasks and close all transports."""
@@ -258,8 +285,7 @@ class McpServerManager:
                 except Exception:
                     pass
                 client.transport = None
-                if client.status == ServerStatus.ready:
-                    client.status = ServerStatus.disconnected
+            await self._on_server_disconnected(client.server_name)
 
     async def call_tool(
         self, server_name: str, tool_name: str, arguments: dict[str, Any] | None = None
@@ -318,6 +344,17 @@ class McpServerManager:
                     {
                         "type": "text",
                         "text": f"Error: Tool '{tool_name}' timed out after {client.config.tool_timeout}s",
+                    }
+                ],
+                "isError": True,
+            }
+        except TransportError:
+            await self._on_server_disconnected(server_name)
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Error: MCP server '{server_name}' disconnected during tool call",
                     }
                 ],
                 "isError": True,
@@ -470,7 +507,7 @@ class McpServerManager:
     def _unregister_server_tools(self, server_name: str) -> None:
         if self._tool_registry is None:
             return
-        prefix = f"{server_name}_"
+        prefix = f"{normalise_server_name(server_name)}_"
         names_to_remove = [
             name for name in self._tool_registry.tool_names if name.startswith(prefix)
         ]

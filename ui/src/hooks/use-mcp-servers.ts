@@ -56,6 +56,7 @@ export function useToggleMcpServer() {
     mutationFn: (id: string) => api.toggleMcpServer(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mcpServers'] })
+      queryClient.invalidateQueries({ queryKey: ['tools'] })
     },
   })
 }

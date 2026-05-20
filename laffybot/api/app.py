@@ -101,7 +101,9 @@ def create_app(
         await session_manager_obj.start()
 
         # Start MCP connections in background (non-blocking)
-        mcp_manager: McpServerManager | None = None
+        mcp_manager: McpServerManager = McpServerManager(
+            [], tool_registry=tool_registry_obj
+        )
         try:
             raw_configs = await mcp_server_store_obj.get_enabled_server_configs()
             if raw_configs:
@@ -111,7 +113,6 @@ def create_app(
                 asyncio.create_task(mcp_manager.start())
         except Exception as exc:
             logger.warning("Failed to initialize MCP servers: {}", exc)
-            mcp_manager = None
 
         app.state.mcp_manager = mcp_manager
         app.state.mcp_server_store = mcp_server_store_obj

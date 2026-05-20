@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi import status as http_status
-from loguru import logger
 
 from laffybot.agent.tools.mcp.client import McpClient, McpError, McpProtocolError
 from laffybot.agent.tools.mcp.manager import (
@@ -348,8 +347,5 @@ async def _trigger_hot_swap(
     mcp_manager: McpServerManager,
 ) -> None:
     """Rebuild all enabled server configs and hot-swap the manager."""
-    try:
-        configs = await _build_configs_from_store(mcp_store)
-        await mcp_manager.hot_swap(configs)
-    except Exception as exc:
-        logger.error("MCP hot-swap failed: {}", exc)
+    configs = await _build_configs_from_store(mcp_store)
+    await mcp_manager.hot_swap(configs)

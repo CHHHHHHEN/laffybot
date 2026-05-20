@@ -50,9 +50,12 @@ summary: |
 
 ## Outstanding items / known gaps
 - **Env/headers for startup configs**: env and headers fields are decrypted when building configs via `get_enabled_server_configs()`. However, during lifespan startup these are only loaded once; any subsequent update requires a hot_swap cycle.
-- **No automatic reconnection**: Per plan scope — servers that disconnect are marked `failed` and require manual reconnect or next app restart.
+- **No automatic reconnection**: Servers that disconnect are marked `disconnected` and require manual reconnect or next app restart.
 - **No OAuth 2.1**: Explicitly excluded from scope.
 - **No Sampling (server→LLM)**: Explicitly excluded.
 - **No dynamic tool discovery**: `tools/list_changed` notifications not handled.
 - **No resource/prompt subscriptions**: Explicitly excluded.
 - **No concurrency in McpClient**: All requests serialised via asyncio.Lock per JSON-RPC protocol requirement. Long `call_tool` blocks `ping`.
+
+### Changes since initial implementation
+- **2026-05-20 — MCP disconnect tool cleanup**: Tools registered by a disconnected MCP server are now automatically cleaned up from ToolRegistry. Three trigger paths cover all disconnect scenarios (transport callback, call_tool exception, shutdown). See `docs/archive/mcp-disconnect-tool-cleanup-2026-05-20.md`.

@@ -15,6 +15,17 @@ _MULTI_UNDERSCORE_RE = re.compile(r"_+")
 _MAX_TOOL_NAME_LENGTH = 64
 
 
+def normalise_server_name(server_name: str) -> str:
+    """Normalise a server name for use in tool name prefixes.
+
+    * Replace ``[^a-zA-Z0-9_-]`` with ``_``
+    * Collapse multiple underscores
+    * Strip leading/trailing underscores
+    """
+    safe = _NAME_CLEAN_RE.sub("_", server_name)
+    return _MULTI_UNDERSCORE_RE.sub("_", safe).strip("_")
+
+
 def _normalise_tool_name(server_name: str, tool_name: str) -> str:
     """Normalise ``{server_name}_{tool_name}``.
 
@@ -22,8 +33,7 @@ def _normalise_tool_name(server_name: str, tool_name: str) -> str:
     * Collapse multiple underscores
     * Truncate to 64 characters
     """
-    safe_server = _NAME_CLEAN_RE.sub("_", server_name)
-    safe_server = _MULTI_UNDERSCORE_RE.sub("_", safe_server).strip("_")
+    safe_server = normalise_server_name(server_name)
     safe_tool = _NAME_CLEAN_RE.sub("_", tool_name)
     safe_tool = _MULTI_UNDERSCORE_RE.sub("_", safe_tool).strip("_")
     name = f"{safe_server}_{safe_tool}"
