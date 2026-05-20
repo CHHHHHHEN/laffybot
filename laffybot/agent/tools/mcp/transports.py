@@ -10,6 +10,7 @@ import signal
 from abc import ABC, abstractmethod
 
 import httpx
+import httpx_sse
 from loguru import logger
 
 _ENV_WHITELIST = {"PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR"}
@@ -55,6 +56,31 @@ def _win_cmd_wrap(command: str, args: list[str]) -> tuple[str, list[str]]:
     if command.endswith((".cmd", ".bat")) or command in ("npx", "bunx"):
         return "cmd.exe", ["/d", "/c", command, *args]
     return command, args
+
+
+def _parse_sse_events(text: str) -> list[tuple[str, str]]:
+    """Parse raw SSE text into (event_type, data) pairs.
+
+    Handles ``event:``, ``data:`` line types and blank-line delimiters,
+    including multi-line ``data:`` fields and trailing events without a
+    terminating blank line.
+    """
+    events: list[tuple[str, str]] = []
+    event_type = ""
+    data_lines: list[str] = []
+    for line in text.split("\n"):
+        line = line.rstrip("\r")
+        if line.startswith("event: "):
+            event_type = line[7:].strip()
+        elif line.startswith("data: "):
+            data_lines.append(line[6:])
+        elif line == "" and data_lines:
+            events.append((event_type, "\n".join(data_lines)))
+            event_type = ""
+            data_lines = []
+    if data_lines:
+        events.append((event_type, "\n".join(data_lines)))
+    return events
 
 
 class StdioTransport(Transport):
@@ -200,16 +226,15 @@ class SseTransport(Transport):
                     return
             except json.JSONDecodeError:
                 pass
-            # If the body looks like SSE text, try to extract a ``data:`` line
-            for line in body.split("\n"):
-                if line.startswith("data: "):
-                    payload = line[6:].strip()
+            # If the body looks like SSE text, try to extract JSON-RPC data
+            for evt_type, data in _parse_sse_events(body):
+                if evt_type in ("message", "jsonrpc") and data:
                     try:
-                        json.loads(payload)
-                        await self._lines.put(payload)
-                        return
+                        json.loads(data)
                     except json.JSONDecodeError:
-                        pass
+                        continue
+                    await self._lines.put(data)
+                    return
 
     async def receive(self) -> str:
         line = await self._lines.get()
@@ -234,36 +259,19 @@ class SseTransport(Transport):
             self._client = None
 
     async def _read_sse(self) -> None:
-        event_type = ""
-        data_buffer: list[str] = []
         try:
-            async for line_bytes in self._response.aiter_lines():  # type: ignore[union-attr]
-                line = line_bytes.rstrip("\r")
-                if line.startswith("event: "):
-                    event_type = line[7:].strip()
-                elif line.startswith("data: "):
-                    data_buffer.append(line[6:])
-                elif line == "" and data_buffer:
-                    payload = "\n".join(data_buffer)
-                    data_buffer = []
-                    evt = event_type
-                    event_type = ""
-                    if evt == "endpoint":
-                        self._post_url = payload.strip()
-                    elif evt in ("message", "jsonrpc"):
-                        # MCP protocol uses ``message`` event type for JSON-RPC
-                        try:
-                            json.loads(payload)
-                        except json.JSONDecodeError:
-                            logger.warning(
-                                "Ignoring non-JSON SSE event: {}", payload[:200]
-                            )
-                            continue
-                        await self._lines.put(payload)
-                    else:
-                        logger.debug("Ignoring unknown SSE event type '{}'", evt)
-                elif line.startswith(":") or not line.strip():
-                    continue
+            async for sse in httpx_sse.EventSource(self._response).aiter_sse():  # type: ignore[arg-type]
+                if sse.event == "endpoint":
+                    self._post_url = sse.data.strip()
+                elif sse.event in ("message", "jsonrpc"):
+                    try:
+                        json.loads(sse.data)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "Ignoring non-JSON SSE event: {}", sse.data[:200]
+                        )
+                        continue
+                    await self._lines.put(sse.data)
         except Exception as exc:
             if self._connected:
                 logger.error("SSE read task error: {}", exc)
@@ -314,24 +322,14 @@ class StreamableHttpTransport(Transport):
         # Notification responses may have an empty body — nothing to queue
         if not body.strip():
             return
-        # Parse SSE lines looking for jsonrpc data events
-        lines = body.split("\n")
-        event_type = ""
-        data_buffer: list[str] = []
-        for line in lines:
-            line = line.rstrip("\r")
-            if line.startswith("event: "):
-                event_type = line[7:].strip()
-            elif line.startswith("data: "):
-                data_buffer.append(line[6:])
-            elif line == "" and data_buffer:
-                payload = "\n".join(data_buffer)
-                data_buffer = []
-                if event_type == "jsonrpc":
-                    await self._responses.put(payload)
-                event_type = ""
+        # Parse SSE events looking for JSON-RPC data events
+        found = False
+        for evt_type, data in _parse_sse_events(body):
+            if evt_type in ("message", "jsonrpc") and data:
+                await self._responses.put(data)
+                found = True
         # If no SSE format, treat entire body as response
-        if self._responses.empty():
+        if not found:
             await self._responses.put(body)
 
     async def receive(self) -> str:
