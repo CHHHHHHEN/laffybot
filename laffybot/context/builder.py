@@ -1,5 +1,6 @@
 """Simple context builder implementation."""
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -12,6 +13,61 @@ from .compressor import CompressionDetector, prune_tool_outputs
 from .templates import SystemPromptTemplate
 from .tokens import ApproximateTokenCounter, UsageBasedTokenCounter
 from .types import ContextConfig, RegionInfo
+
+
+def _normalize_assistant_tool_calls(message: dict[str, Any]) -> dict[str, Any]:
+    """Convert stored tool_calls format to OpenAI API format.
+
+    Stored format (for UI):
+        {"tool_call_id": ..., "name": ..., "arguments": ..., "status": ..., ...}
+
+    OpenAI format (for API):
+        {"id": ..., "type": "function", "function": {"name": ..., "arguments": ...}}
+    """
+    tool_calls = message.get("tool_calls", [])
+    if not tool_calls:
+        return message
+
+    normalized = []
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            continue
+
+        tc_id = tc.get("tool_call_id") or tc.get("id")
+        if not tc_id:
+            continue
+
+        if tc.get("type") == "function" and "function" in tc:
+            normalized.append(tc)
+            continue
+
+        name = tc.get("name")
+        args = tc.get("arguments")
+        if not name:
+            continue
+
+        if args is None:
+            args = "{}"
+        elif not isinstance(args, str):
+            try:
+                args = json.dumps(args, ensure_ascii=False)
+            except (TypeError, ValueError):
+                args = "{}"
+
+        normalized.append(
+            {
+                "id": tc_id,
+                "type": "function",
+                "function": {"name": name, "arguments": args},
+            }
+        )
+
+    if not normalized:
+        return message
+
+    result = {k: v for k, v in message.items() if k != "tool_calls"}
+    result["tool_calls"] = normalized
+    return result
 
 
 class SimpleContextBuilder(ContextBuilder):
@@ -83,7 +139,11 @@ class SimpleContextBuilder(ContextBuilder):
             messages.append({"role": "system", "content": effective_prompt})
 
         # 2/3. Add history + current message
-        messages.extend(history)
+        for msg in history:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                messages.append(_normalize_assistant_tool_calls(msg))
+            else:
+                messages.append(msg)
         messages.append({"role": "user", "content": current_message})
 
         # 4. Apply capacity control (pruning then detection)

@@ -7,6 +7,7 @@ import pytest
 
 from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.config import ContextConfig
+from laffybot.context.builder import SimpleContextBuilder
 from laffybot.session.errors import SessionNotBusyError
 from laffybot.session.manager import SessionManager
 from laffybot.session.store import SQLiteStore
@@ -31,12 +32,14 @@ async def manager(store: SQLiteStore) -> SessionManager:
     mock_provider_store.get_provider.return_value = None
     mock_provider_store.list_models.return_value = [_FakeModel(name="test-model")]
 
+    context_builder = SimpleContextBuilder(ContextConfig())
+
     m = SessionManager(
         store=store,
         provider_store=mock_provider_store,
         app_setting_store=mock_app_settings,
         tool_registry=ToolRegistry(),
-        context_config=ContextConfig(),
+        context_builder=context_builder,
         provider_factory=store,
     )
     await m.start()
