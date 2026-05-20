@@ -56,6 +56,7 @@ export function useSseStream(
       abortSession(prev)
       const store = useChatStore.getState()
       store.archiveCurrentIteration(prev)
+      store.updateSessionLastMessage(prev, { isStreaming: false })
       store.setSessionConnectionStatus(prev, 'disconnected')
       store.stopStreaming(prev)
       store.setSessionRequestId(prev, null)
@@ -110,6 +111,7 @@ export function useSseStream(
           break
         case 'done':
           store.archiveCurrentIteration(currentSessionId)
+          store.updateSessionLastMessage(currentSessionId, { isStreaming: false })
           store.setSessionConnectionStatus(currentSessionId, 'disconnected')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
@@ -118,6 +120,7 @@ export function useSseStream(
           break
         case 'error':
           store.archiveCurrentIteration(currentSessionId)
+          store.updateSessionLastMessage(currentSessionId, { isStreaming: false, isError: true })
           store.setSessionConnectionStatus(currentSessionId, 'error')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
@@ -126,6 +129,7 @@ export function useSseStream(
           break
         case 'cancelled':
           store.archiveCurrentIteration(currentSessionId)
+          store.updateSessionLastMessage(currentSessionId, { isStreaming: false })
           store.setSessionConnectionStatus(currentSessionId, 'disconnected')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
@@ -226,6 +230,7 @@ export function useSseStream(
       if (err instanceof ApiError && err.code === 'SESSION_NOT_BUSY') {
         const store = useChatStore.getState()
         store.archiveCurrentIteration(currentSessionId)
+        store.updateSessionLastMessage(currentSessionId, { isStreaming: false })
         store.setSessionConnectionStatus(currentSessionId, 'disconnected')
         store.stopStreaming(currentSessionId)
         store.setSessionRequestId(currentSessionId, null)
@@ -237,6 +242,7 @@ export function useSseStream(
 
     const store = useChatStore.getState()
     store.archiveCurrentIteration(currentSessionId)
+    store.updateSessionLastMessage(currentSessionId, { isStreaming: false })
     store.setSessionConnectionStatus(currentSessionId, 'disconnected')
     store.stopStreaming(currentSessionId)
     store.setSessionRequestId(currentSessionId, null)

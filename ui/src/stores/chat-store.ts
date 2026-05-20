@@ -95,26 +95,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   appendSessionMessage: (sessionId, message) =>
     set((state) => {
       const existing = state.messagesBySession[sessionId] ?? []
-      const m = { ...message }
-      // Migrate Assistant messages from API flat format to iterations format
-      if (m.role === 'assistant' && !m.iterations && !m.currentIteration) {
-        const content = m.content || ''
-        // Check if it was stored as flat message (e.g. from history API)
-        const oldReasoning = (m as Record<string, unknown>).reasoning_content as string | undefined
-        const oldToolCalls = (m as Record<string, unknown>).tool_calls as ToolCall[] | undefined
-        if (content || oldReasoning || oldToolCalls) {
-          m.iterations = [
-            {
-              iteration: 0,
-              content: content || undefined,
-              reasoning: oldReasoning || undefined,
-              toolCalls: oldToolCalls || undefined,
-            },
-          ]
-        }
-      }
       return {
-        messagesBySession: { ...state.messagesBySession, [sessionId]: [...existing, m] },
+        messagesBySession: { ...state.messagesBySession, [sessionId]: [...existing, message] },
       }
     }),
   updateSessionLastMessage: (sessionId, updates) =>

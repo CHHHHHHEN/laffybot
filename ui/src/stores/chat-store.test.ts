@@ -108,22 +108,17 @@ describe('ChatStore', () => {
     expect(lastMessage.currentIteration?.toolCalls![0].status).toBe('completed')
   })
 
-  it('migrates flat assistant messages to iterations format on append', () => {
+  it('stores flat assistant messages as-is without migration', () => {
     const store = useChatStore.getState()
-    const flatMsg = {
+    store.appendSessionMessage('sess-1', {
       id: '1',
-      role: 'assistant' as const,
+      role: 'assistant',
       content: 'Hello',
       timestamp: '',
-      reasoning_content: 'thinking',
-      tool_calls: [{ tool_call_id: 'tc1', name: 'test', arguments: {}, status: 'completed' }],
-    }
-    store.appendSessionMessage('sess-1', flatMsg as never)
+    })
     const msg = store.getSessionMessages('sess-1')[0]
-    expect(msg.iterations).toHaveLength(1)
-    expect(msg.iterations![0].content).toBe('Hello')
-    expect(msg.iterations![0].reasoning).toBe('thinking')
-    expect(msg.iterations![0].toolCalls).toHaveLength(1)
+    expect(msg.content).toBe('Hello')
+    expect(msg.iterations).toBeUndefined()
   })
 
   it('selects messages for active session', () => {

@@ -40,19 +40,27 @@ export function ChatPage() {
           store.setSessionConnectionStatus(sessionId, 'connecting')
           const history = await getHistory(sessionId, 50, abortController.signal)
           if (abortController.signal.aborted) return
-          const messages = history.messages.map((m, i) => ({
-            id: `${i}`,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp,
-            ...(m.reasoning_content !== undefined || m.tool_calls !== undefined
-              ? {
-                  reasoning_content: m.reasoning_content,
-                  tool_calls: m.tool_calls,
-                }
-              : {}),
-          }))
-          store.setSessionMessages(sessionId, messages as Parameters<typeof store.setSessionMessages>[1])
+          const messages: Parameters<typeof store.setSessionMessages>[1] = history.messages.map((m, i) => {
+            const msg: Parameters<typeof store.setSessionMessages>[1][number] = {
+              id: `${i}`,
+              role: m.role,
+              content: m.content,
+              timestamp: m.timestamp,
+            }
+            // Migrate assistant messages from flat API format to iterations format
+            if (m.role === 'assistant' && (m.content || m.reasoning_content || m.tool_calls)) {
+              msg.iterations = [
+                {
+                  iteration: 0,
+                  content: m.content || undefined,
+                  reasoning: m.reasoning_content || undefined,
+                  toolCalls: m.tool_calls as import('@/stores/chat-store').ToolCall[] | undefined,
+                },
+              ]
+            }
+            return msg
+          })
+          store.setSessionMessages(sessionId, messages)
           store.setSessionConnectionStatus(sessionId, 'disconnected')
           store.markHistoryLoaded(sessionId)
         } catch {
