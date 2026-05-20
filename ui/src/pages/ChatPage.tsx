@@ -40,15 +40,19 @@ export function ChatPage() {
           store.setSessionConnectionStatus(sessionId, 'connecting')
           const history = await getHistory(sessionId, 50, abortController.signal)
           if (abortController.signal.aborted) return
-          store.setSessionMessages(
-            sessionId,
-            history.messages.map((m, i) => ({
-              id: `${i}`,
-              role: m.role,
-              content: m.content,
-              timestamp: m.timestamp,
-            }))
-          )
+          const messages = history.messages.map((m, i) => ({
+            id: `${i}`,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            ...(m.reasoning_content !== undefined || m.tool_calls !== undefined
+              ? {
+                  reasoning_content: m.reasoning_content,
+                  tool_calls: m.tool_calls,
+                }
+              : {}),
+          }))
+          store.setSessionMessages(sessionId, messages as Parameters<typeof store.setSessionMessages>[1])
           store.setSessionConnectionStatus(sessionId, 'disconnected')
           store.markHistoryLoaded(sessionId)
         } catch {

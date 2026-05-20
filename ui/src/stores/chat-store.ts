@@ -4,12 +4,6 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-export interface MessageSegment {
-  type: 'reasoning' | 'content' | 'tool_calls'
-  data: string | ToolCall[]
-  iteration: number
-}
-
 export interface ToolCall {
   tool_call_id: string
   name: string
@@ -21,21 +15,22 @@ export interface ToolCall {
   error_message?: string
 }
 
+export interface IterationContent {
+  iteration: number
+  reasoning?: string
+  content?: string
+  toolCalls?: ToolCall[]
+}
+
 export interface Message {
   id: string
   role: MessageRole
   content: string
   timestamp: string
-  reasoning?: string
-  tool_calls?: ToolCall[]
-  segments?: MessageSegment[]
+  iterations?: IterationContent[]
+  currentIteration?: IterationContent
   isStreaming?: boolean
   isError?: boolean
-}
-
-interface StreamBuffer {
-  content: string
-  reasoning: string
 }
 
 interface ChatState {
@@ -47,7 +42,6 @@ interface ChatState {
   streamingSessions: string[]
   connectionStatusBySession: Record<string, ConnectionStatus>
   requestIdBySession: Record<string, string>
-  streamBuffersBySession: Record<string, StreamBuffer>
   loadedHistorySessions: string[]
 
   // Actions for active session
@@ -69,13 +63,13 @@ interface ChatState {
   getSessionRequestId: (sessionId: string) => string | undefined
   setSessionRequestId: (sessionId: string, requestId: string | null) => void
 
-  initSessionStreamBuffer: (sessionId: string) => void
-  appendSessionContent: (sessionId: string, text: string) => void
-  appendSessionReasoning: (sessionId: string, text: string) => void
-  addSessionToolCall: (sessionId: string, toolCall: ToolCall) => void
-  updateSessionToolCall: (sessionId: string, toolCallId: string, updates: Partial<ToolCall>) => void
-  appendSessionSegment: (sessionId: string, segment: MessageSegment) => void
-  flushSessionStreamBuffer: (sessionId: string) => void
+  // New iteration-based operations
+  initCurrentIteration: (sessionId: string, iteration: number) => void
+  appendCurrentContent: (sessionId: string, text: string) => void
+  appendCurrentReasoning: (sessionId: string, text: string) => void
+  addCurrentToolCall: (sessionId: string, toolCall: ToolCall) => void
+  updateCurrentToolCall: (sessionId: string, toolCallId: string, updates: Partial<ToolCall>) => void
+  archiveCurrentIteration: (sessionId: string) => void
 
   hasLoadedHistory: (sessionId: string) => boolean
   markHistoryLoaded: (sessionId: string) => void
@@ -89,7 +83,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingSessions: [],
   connectionStatusBySession: {},
   requestIdBySession: {},
-  streamBuffersBySession: {},
   loadedHistorySessions: [],
 
   setActiveSessionId: (id) => set({ activeSessionId: id }),
@@ -102,8 +95,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
   appendSessionMessage: (sessionId, message) =>
     set((state) => {
       const existing = state.messagesBySession[sessionId] ?? []
+      const m = { ...message }
+      // Migrate Assistant messages from API flat format to iterations format
+      if (m.role === 'assistant' && !m.iterations && !m.currentIteration) {
+        const content = m.content || ''
+        // Check if it was stored as flat message (e.g. from history API)
+        const oldReasoning = (m as Record<string, unknown>).reasoning_content as string | undefined
+        const oldToolCalls = (m as Record<string, unknown>).tool_calls as ToolCall[] | undefined
+        if (content || oldReasoning || oldToolCalls) {
+          m.iterations = [
+            {
+              iteration: 0,
+              content: content || undefined,
+              reasoning: oldReasoning || undefined,
+              toolCalls: oldToolCalls || undefined,
+            },
+          ]
+        }
+      }
       return {
-        messagesBySession: { ...state.messagesBySession, [sessionId]: [...existing, message] },
+        messagesBySession: { ...state.messagesBySession, [sessionId]: [...existing, m] },
       }
     }),
   updateSessionLastMessage: (sessionId, updates) =>
@@ -147,73 +158,105 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { requestIdBySession: { ...state.requestIdBySession, [sessionId]: requestId } }
     }),
 
-  initSessionStreamBuffer: (sessionId) =>
-    set((state) => ({
-      streamBuffersBySession: { ...state.streamBuffersBySession, [sessionId]: { content: '', reasoning: '' } },
-    })),
-  appendSessionContent: (sessionId, text) => {
-    const buffer = get().streamBuffersBySession[sessionId]
-    if (!buffer) return
-    const newContent = buffer.content + text
-    set((state) => ({
-      streamBuffersBySession: { ...state.streamBuffersBySession, [sessionId]: { ...buffer, content: newContent } },
-    }))
-    get().updateSessionLastMessage(sessionId, { content: newContent })
-  },
-  appendSessionReasoning: (sessionId, text) => {
-    const buffer = get().streamBuffersBySession[sessionId]
-    if (!buffer) return
-    const newReasoning = buffer.reasoning + text
-    set((state) => ({
-      streamBuffersBySession: { ...state.streamBuffersBySession, [sessionId]: { ...buffer, reasoning: newReasoning } },
-    }))
-    get().updateSessionLastMessage(sessionId, { reasoning: newReasoning })
-  },
-  addSessionToolCall: (sessionId, toolCall) =>
+  // New iteration-based operations
+  initCurrentIteration: (sessionId, iteration) =>
     set((state) => {
       const messages = [...(state.messagesBySession[sessionId] ?? [])]
       if (messages.length === 0) return state
       const last = messages[messages.length - 1]
+      if (last.role !== 'assistant') return state
       messages[messages.length - 1] = {
         ...last,
-        tool_calls: [...(last.tool_calls || []), toolCall],
+        currentIteration: { iteration, reasoning: undefined, content: undefined, toolCalls: undefined },
       }
       return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
     }),
-  updateSessionToolCall: (sessionId, toolCallId, updates) =>
+  appendCurrentContent: (sessionId, text) =>
     set((state) => {
       const messages = [...(state.messagesBySession[sessionId] ?? [])]
       if (messages.length === 0) return state
       const last = messages[messages.length - 1]
+      if (last.role !== 'assistant' || !last.currentIteration) return state
+      const current = last.currentIteration
       messages[messages.length - 1] = {
         ...last,
-        tool_calls: (last.tool_calls || []).map((tc) =>
-          tc.tool_call_id === toolCallId ? { ...tc, ...updates } : tc
-        ),
+        currentIteration: {
+          ...current,
+          content: (current.content || '') + text,
+        },
+        isStreaming: true,
       }
       return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
     }),
-  appendSessionSegment: (sessionId, segment) =>
+  appendCurrentReasoning: (sessionId, text) =>
     set((state) => {
       const messages = [...(state.messagesBySession[sessionId] ?? [])]
       if (messages.length === 0) return state
       const last = messages[messages.length - 1]
+      if (last.role !== 'assistant' || !last.currentIteration) return state
+      const current = last.currentIteration
       messages[messages.length - 1] = {
         ...last,
-        segments: [...(last.segments || []), segment],
+        currentIteration: {
+          ...current,
+          reasoning: (current.reasoning || '') + text,
+        },
+        isStreaming: true,
       }
       return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
     }),
-  flushSessionStreamBuffer: (sessionId) =>
+  addCurrentToolCall: (sessionId, toolCall) =>
     set((state) => {
       const messages = [...(state.messagesBySession[sessionId] ?? [])]
       if (messages.length === 0) return state
       const last = messages[messages.length - 1]
-      if (last.role === 'assistant' && last.isStreaming) {
-        messages[messages.length - 1] = { ...last, isStreaming: false }
+      if (last.role !== 'assistant' || !last.currentIteration) return state
+      const current = last.currentIteration
+      messages[messages.length - 1] = {
+        ...last,
+        currentIteration: {
+          ...current,
+          toolCalls: [...(current.toolCalls || []), toolCall],
+        },
+      }
+      return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
+    }),
+  updateCurrentToolCall: (sessionId, toolCallId, updates) =>
+    set((state) => {
+      const messages = [...(state.messagesBySession[sessionId] ?? [])]
+      if (messages.length === 0) return state
+      const last = messages[messages.length - 1]
+      if (last.role !== 'assistant' || !last.currentIteration) return state
+      const current = last.currentIteration
+      messages[messages.length - 1] = {
+        ...last,
+        currentIteration: {
+          ...current,
+          toolCalls: (current.toolCalls || []).map((tc) =>
+            tc.tool_call_id === toolCallId ? { ...tc, ...updates } : tc
+          ),
+        },
+      }
+      return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
+    }),
+  archiveCurrentIteration: (sessionId) =>
+    set((state) => {
+      const messages = [...(state.messagesBySession[sessionId] ?? [])]
+      if (messages.length === 0) return state
+      const last = messages[messages.length - 1]
+      if (last.role !== 'assistant' || !last.currentIteration) return state
+      const current = last.currentIteration
+      // Skip archiving if currentIteration is empty (nothing accumulated)
+      if (!current.content && !current.reasoning && (!current.toolCalls || current.toolCalls.length === 0)) {
+        messages[messages.length - 1] = { ...last, currentIteration: undefined }
         return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
       }
-      return state
+      messages[messages.length - 1] = {
+        ...last,
+        iterations: [...(last.iterations || []), current],
+        currentIteration: undefined,
+      }
+      return { messagesBySession: { ...state.messagesBySession, [sessionId]: messages } }
     }),
 
   hasLoadedHistory: (sessionId) => get().loadedHistorySessions.includes(sessionId),
@@ -232,14 +275,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const { [sessionId]: __, ...restConn } = state.connectionStatusBySession
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [sessionId]: ___, ...restReq } = state.requestIdBySession
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [sessionId]: ____, ...restBuf } = state.streamBuffersBySession
       return {
         messagesBySession: restMsgs,
         streamingSessions: state.streamingSessions.filter((id) => id !== sessionId),
         connectionStatusBySession: restConn,
         requestIdBySession: restReq,
-        streamBuffersBySession: restBuf,
         loadedHistorySessions: state.loadedHistorySessions.filter((id) => id !== sessionId),
       }
     }),

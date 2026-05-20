@@ -115,6 +115,17 @@ export interface HistoryMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: string
+  reasoning_content?: string
+  tool_calls?: Array<{
+    tool_call_id: string
+    name: string
+    arguments: Record<string, unknown>
+    status: string
+    result?: string
+    duration_ms?: number
+    success?: boolean
+    error_message?: string
+  }>
 }
 
 export interface HistoryResponse {

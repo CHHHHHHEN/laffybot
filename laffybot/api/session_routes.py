@@ -96,6 +96,10 @@ def _serialize_message(message: dict[str, object]) -> dict[str, object]:
         result["input_tokens"] = message["input_tokens"]
     if "output_tokens" in message:
         result["output_tokens"] = message["output_tokens"]
+    if "reasoning_content" in message:
+        result["reasoning_content"] = message["reasoning_content"]
+    if "tool_calls" in message:
+        result["tool_calls"] = message["tool_calls"]
     return result
 
 

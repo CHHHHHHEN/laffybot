@@ -23,10 +23,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
         ) : (
           <StreamMessage
-            text={message.content}
-            reasoning={message.reasoning}
-            toolCalls={message.tool_calls}
-            segments={message.segments}
+            iterations={message.iterations}
+            currentIteration={message.currentIteration}
             isStreaming={message.isStreaming}
           />
         )}

@@ -312,6 +312,8 @@ class SessionManager:
             )
 
         assistant_chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+        accumulated_tool_calls: list[dict[str, Any]] = []
         response_status: SessionStatus = "idle"
         error_message: str | None = None
 
@@ -374,6 +376,28 @@ class SessionManager:
                 yield event
                 if event.type == "content" and event.text:
                     assistant_chunks.append(event.text)
+                elif event.type == "reasoning" and event.text:
+                    reasoning_chunks.append(event.text)
+                elif event.type == "tool_call":
+                    accumulated_tool_calls.append(
+                        {
+                            "tool_call_id": event.tool_call_id,
+                            "name": event.name,
+                            "arguments": event.arguments,
+                            "status": "pending",
+                        }
+                    )
+                elif event.type == "tool_result" and event.tool_call_id:
+                    for tc in accumulated_tool_calls:
+                        if tc["tool_call_id"] == event.tool_call_id:
+                            tc["status"] = "completed" if event.success else "failed"
+                            tc["result"] = event.result
+                            tc["success"] = event.success
+                            if event.duration_ms is not None:
+                                tc["duration_ms"] = event.duration_ms
+                            if event.error_message is not None:
+                                tc["error_message"] = event.error_message
+                            break
                 elif event.type == "error":
                     response_status = "error"
                     error_message = self._extract_error_message(event.error)
@@ -396,6 +420,12 @@ class SessionManager:
                             "".join(assistant_chunks),
                             input_tokens=input_tokens,
                             output_tokens=output_tokens,
+                            reasoning_content="".join(reasoning_chunks)
+                            if reasoning_chunks
+                            else None,
+                            tool_calls=accumulated_tool_calls
+                            if accumulated_tool_calls
+                            else None,
                         )
                     await self.store.update_session_status(
                         session_id,

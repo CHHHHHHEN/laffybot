@@ -84,6 +84,8 @@ class MessageResponse(BaseModel):
     metadata: dict[str, Any] | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    reasoning_content: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class HistoryResponse(BaseModel):

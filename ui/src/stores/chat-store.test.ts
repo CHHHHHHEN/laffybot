@@ -9,7 +9,6 @@ describe('ChatStore', () => {
       streamingSessions: [],
       connectionStatusBySession: {},
       requestIdBySession: {},
-      streamBuffersBySession: {},
       loadedHistorySessions: [],
     })
   })
@@ -65,29 +64,66 @@ describe('ChatStore', () => {
     store.startStreaming('sess-1')
     store.setSessionConnectionStatus('sess-1', 'connected')
     store.setSessionRequestId('sess-1', 'req-1')
-    store.initSessionStreamBuffer('sess-1')
     store.markHistoryLoaded('sess-1')
     store.cleanupSession('sess-1')
     expect(store.getSessionMessages('sess-1')).toEqual([])
     expect(store.isSessionStreaming('sess-1')).toBe(false)
   })
 
-  it('appends content to stream buffer', () => {
+  it('manages currentIteration content', () => {
     const store = useChatStore.getState()
-    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true })
-    store.initSessionStreamBuffer('sess-1')
-    store.appendSessionContent('sess-1', 'Hello')
-    store.appendSessionContent('sess-1', ' World')
+    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true, currentIteration: { iteration: 0 } })
+    store.appendCurrentContent('sess-1', 'Hello')
+    store.appendCurrentContent('sess-1', ' World')
     const lastMessage = store.getSessionMessages('sess-1').slice(-1)[0]
-    expect(lastMessage.content).toBe('Hello World')
+    expect(lastMessage.currentIteration?.content).toBe('Hello World')
   })
 
-  it('flushes stream buffer and stops streaming', () => {
+  it('manages currentIteration reasoning', () => {
     const store = useChatStore.getState()
-    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: 'Hello', timestamp: '', isStreaming: true })
-    store.flushSessionStreamBuffer('sess-1')
-    const last = store.getSessionMessages('sess-1').slice(-1)[0]
-    expect(last.isStreaming).toBe(false)
+    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true, currentIteration: { iteration: 0 } })
+    store.appendCurrentReasoning('sess-1', 'thinking...')
+    const lastMessage = store.getSessionMessages('sess-1').slice(-1)[0]
+    expect(lastMessage.currentIteration?.reasoning).toBe('thinking...')
+  })
+
+  it('archives currentIteration to iterations', () => {
+    const store = useChatStore.getState()
+    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true, currentIteration: { iteration: 0 } })
+    store.appendCurrentContent('sess-1', 'Hello')
+    store.archiveCurrentIteration('sess-1')
+    const lastMessage = store.getSessionMessages('sess-1').slice(-1)[0]
+    expect(lastMessage.iterations).toHaveLength(1)
+    expect(lastMessage.iterations![0].content).toBe('Hello')
+    expect(lastMessage.currentIteration).toBeUndefined()
+  })
+
+  it('adds tool calls to currentIteration', () => {
+    const store = useChatStore.getState()
+    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true, currentIteration: { iteration: 0 } })
+    store.addCurrentToolCall('sess-1', { tool_call_id: 'tc1', name: 'test', arguments: {}, status: 'pending' })
+    store.updateCurrentToolCall('sess-1', 'tc1', { status: 'completed', result: 'done' })
+    const lastMessage = store.getSessionMessages('sess-1').slice(-1)[0]
+    expect(lastMessage.currentIteration?.toolCalls).toHaveLength(1)
+    expect(lastMessage.currentIteration?.toolCalls![0].status).toBe('completed')
+  })
+
+  it('migrates flat assistant messages to iterations format on append', () => {
+    const store = useChatStore.getState()
+    const flatMsg = {
+      id: '1',
+      role: 'assistant' as const,
+      content: 'Hello',
+      timestamp: '',
+      reasoning_content: 'thinking',
+      tool_calls: [{ tool_call_id: 'tc1', name: 'test', arguments: {}, status: 'completed' }],
+    }
+    store.appendSessionMessage('sess-1', flatMsg as never)
+    const msg = store.getSessionMessages('sess-1')[0]
+    expect(msg.iterations).toHaveLength(1)
+    expect(msg.iterations![0].content).toBe('Hello')
+    expect(msg.iterations![0].reasoning).toBe('thinking')
+    expect(msg.iterations![0].toolCalls).toHaveLength(1)
   })
 
   it('selects messages for active session', () => {
@@ -96,5 +132,23 @@ describe('ChatStore', () => {
     state.appendSessionMessage('sess-1', { id: '1', role: 'user', content: 'hello', timestamp: '' })
     const messages = selectActiveSessionMessages(useChatStore.getState())
     expect(messages).toHaveLength(1)
+  })
+
+  it('skips archiving empty currentIteration', () => {
+    const store = useChatStore.getState()
+    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true, currentIteration: { iteration: 0 } })
+    store.archiveCurrentIteration('sess-1')
+    const lastMessage = store.getSessionMessages('sess-1').slice(-1)[0]
+    expect(lastMessage.iterations).toBeUndefined()
+    expect(lastMessage.currentIteration).toBeUndefined()
+  })
+
+  it('initCurrentIteration sets up a new iteration on the last assistant message', () => {
+    const store = useChatStore.getState()
+    store.appendSessionMessage('sess-1', { id: '1', role: 'assistant', content: '', timestamp: '', isStreaming: true })
+    store.initCurrentIteration('sess-1', 1)
+    const lastMessage = store.getSessionMessages('sess-1').slice(-1)[0]
+    expect(lastMessage.currentIteration).toBeDefined()
+    expect(lastMessage.currentIteration!.iteration).toBe(1)
   })
 })

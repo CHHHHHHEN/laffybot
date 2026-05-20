@@ -143,6 +143,8 @@ class SessionStore(ABC):
         metadata: dict[str, Any] | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        reasoning_content: str | None = None,
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> SessionMessage:
         raise NotImplementedError
 
@@ -240,6 +242,23 @@ class SQLiteStore(SessionStore):
             await db.commit()
             logger.info("Database migration completed: added archived_at column")
 
+        # Migration 3: Add reasoning_content and tool_calls_json to messages table
+        async with db.execute("PRAGMA table_info(messages)") as cursor:
+            columns = {row["name"] for row in await cursor.fetchall()}
+
+        migrated = False
+        if "reasoning_content" not in columns:
+            await db.execute("ALTER TABLE messages ADD COLUMN reasoning_content TEXT")
+            migrated = True
+        if "tool_calls_json" not in columns:
+            await db.execute("ALTER TABLE messages ADD COLUMN tool_calls_json TEXT")
+            migrated = True
+        if migrated:
+            await db.commit()
+            logger.info(
+                "Database migration completed: added reasoning_content and tool_calls_json columns"
+            )
+
     @staticmethod
     def _now() -> datetime:
         return datetime.now(timezone.utc)
@@ -293,6 +312,13 @@ class SQLiteStore(SessionStore):
             message["input_tokens"] = row["input_tokens"]
         if row["output_tokens"] is not None:
             message["output_tokens"] = row["output_tokens"]
+        # New columns
+        reasoning_content = row["reasoning_content"]
+        if reasoning_content is not None:
+            message["reasoning_content"] = reasoning_content
+        tool_calls_json = row["tool_calls_json"]
+        if tool_calls_json is not None:
+            message["tool_calls"] = json.loads(tool_calls_json)
         return message
 
     async def create_session(
@@ -488,18 +514,25 @@ class SQLiteStore(SessionStore):
         metadata: dict[str, Any] | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        reasoning_content: str | None = None,
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> SessionMessage:
         db = await self._ensure_db()
         timestamp = self._format_dt(self._now())
         metadata_json = (
             json.dumps(metadata, ensure_ascii=False) if metadata is not None else None
         )
+        tool_calls_json = (
+            json.dumps(tool_calls, ensure_ascii=False)
+            if tool_calls is not None
+            else None
+        )
         await db.execute("BEGIN")
         try:
             await db.execute(
                 """
-                INSERT INTO messages (session_id, role, content, timestamp, metadata, input_tokens, output_tokens)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO messages (session_id, role, content, timestamp, metadata, input_tokens, output_tokens, reasoning_content, tool_calls_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -509,6 +542,8 @@ class SQLiteStore(SessionStore):
                     metadata_json,
                     input_tokens,
                     output_tokens,
+                    reasoning_content,
+                    tool_calls_json,
                 ),
             )
             # Increment user_message_count if role is "user"
@@ -550,6 +585,10 @@ class SQLiteStore(SessionStore):
             result["input_tokens"] = input_tokens
         if output_tokens is not None:
             result["output_tokens"] = output_tokens
+        if reasoning_content is not None:
+            result["reasoning_content"] = reasoning_content
+        if tool_calls is not None:
+            result["tool_calls"] = tool_calls
         return result
 
     async def get_messages(
@@ -565,7 +604,7 @@ class SQLiteStore(SessionStore):
             clauses.append("timestamp < ?")
             params.append(self._format_dt(before))
         query = (
-            "SELECT id, role, content, timestamp, metadata, input_tokens, output_tokens FROM messages "
+            "SELECT id, role, content, timestamp, metadata, input_tokens, output_tokens, reasoning_content, tool_calls_json FROM messages "
             f"WHERE {' AND '.join(clauses)} ORDER BY timestamp ASC, id ASC LIMIT ?"
         )
         async with db.execute(query, [*params, limit]) as cursor:
@@ -583,7 +622,7 @@ class SQLiteStore(SessionStore):
         db = await self._ensure_db()
         placeholders = ", ".join("?" for _ in message_ids)
         query = (
-            "SELECT id, role, content, timestamp, metadata, input_tokens, output_tokens "
+            "SELECT id, role, content, timestamp, metadata, input_tokens, output_tokens, reasoning_content, tool_calls_json "
             "FROM messages WHERE session_id = ? AND id IN ({}) ORDER BY timestamp ASC, id ASC"
         ).format(placeholders)
         async with db.execute(query, [session_id, *message_ids]) as cursor:

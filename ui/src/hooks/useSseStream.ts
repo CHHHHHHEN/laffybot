@@ -30,7 +30,6 @@ export function useSseStream(
   const updateSessionStatus = useUpdateSessionStatus()
 
   const submittingRef = useRef(false)
-  const boundaryToolCallCounts = useRef<Record<string, number>>({})
   const sessionIdRef = useRef(sessionId)
 
   useEffect(() => {
@@ -56,7 +55,7 @@ export function useSseStream(
     if (prev && prev !== sessionId) {
       abortSession(prev)
       const store = useChatStore.getState()
-      store.flushSessionStreamBuffer(prev)
+      store.archiveCurrentIteration(prev)
       store.setSessionConnectionStatus(prev, 'disconnected')
       store.stopStreaming(prev)
       store.setSessionRequestId(prev, null)
@@ -73,59 +72,24 @@ export function useSseStream(
     }
   }, [sessionId])
 
-  const flushPendingSegments = useCallback(
-    (currentSessionId: string, iteration: number) => {
-      const store = useChatStore.getState()
-      const buffer = store.streamBuffersBySession[currentSessionId]
-      if (!buffer) return
-      if (buffer.reasoning) {
-        store.appendSessionSegment(currentSessionId, {
-          type: 'reasoning',
-          data: buffer.reasoning,
-          iteration,
-        })
-      }
-      if (buffer.content) {
-        store.appendSessionSegment(currentSessionId, {
-          type: 'content',
-          data: buffer.content,
-          iteration,
-        })
-      }
-      const lastMessage = store.getSessionMessages(currentSessionId).slice(-1)[0]
-      const toolCallsSinceBoundary = (lastMessage?.tool_calls ?? []).slice(
-        boundaryToolCallCounts.current[currentSessionId] ?? 0
-      )
-      if (toolCallsSinceBoundary.length > 0) {
-        store.appendSessionSegment(currentSessionId, {
-          type: 'tool_calls',
-          data: toolCallsSinceBoundary,
-          iteration,
-        })
-      }
-      boundaryToolCallCounts.current[currentSessionId] = lastMessage?.tool_calls?.length ?? 0
-    },
-    []
-  )
-
   const handleSseEvent = useCallback(
     (event: SseEvent, currentSessionId: string) => {
       const store = useChatStore.getState()
 
       switch (event.type) {
         case 'session_start':
-          store.setSessionConnectionStatus(currentSessionId, 'connected')
           store.setSessionRequestId(currentSessionId, event.request_id ?? null)
+          store.setSessionConnectionStatus(currentSessionId, 'connected')
           updateSessionStatus(currentSessionId, 'busy')
           break
         case 'content':
-          store.appendSessionContent(currentSessionId, event.text ?? '')
+          store.appendCurrentContent(currentSessionId, event.text ?? '')
           break
         case 'reasoning':
-          store.appendSessionReasoning(currentSessionId, event.text ?? '')
+          store.appendCurrentReasoning(currentSessionId, event.text ?? '')
           break
         case 'tool_call':
-          store.addSessionToolCall(currentSessionId, {
+          store.addCurrentToolCall(currentSessionId, {
             tool_call_id: event.tool_call_id ?? '',
             name: event.name ?? '',
             arguments: (event.arguments as Record<string, unknown>) ?? {},
@@ -133,7 +97,7 @@ export function useSseStream(
           })
           break
         case 'tool_result':
-          store.updateSessionToolCall(currentSessionId, event.tool_call_id ?? '', {
+          store.updateCurrentToolCall(currentSessionId, event.tool_call_id ?? '', {
             status: event.success ? 'completed' : 'failed',
             result: event.result,
             success: event.success,
@@ -141,12 +105,11 @@ export function useSseStream(
           })
           break
         case 'iteration_boundary':
-          flushPendingSegments(currentSessionId, event.iteration ?? 0)
-          store.initSessionStreamBuffer(currentSessionId)
+          store.archiveCurrentIteration(currentSessionId)
+          store.initCurrentIteration(currentSessionId, (event.iteration ?? 0) + 1)
           break
         case 'done':
-          flushPendingSegments(currentSessionId, -1)
-          store.flushSessionStreamBuffer(currentSessionId)
+          store.archiveCurrentIteration(currentSessionId)
           store.setSessionConnectionStatus(currentSessionId, 'disconnected')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
@@ -154,8 +117,7 @@ export function useSseStream(
           queryClient.invalidateQueries({ queryKey: ['sessions'] })
           break
         case 'error':
-          flushPendingSegments(currentSessionId, -1)
-          store.flushSessionStreamBuffer(currentSessionId)
+          store.archiveCurrentIteration(currentSessionId)
           store.setSessionConnectionStatus(currentSessionId, 'error')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
@@ -163,8 +125,7 @@ export function useSseStream(
           setError(event.error?.message ?? 'Stream error')
           break
         case 'cancelled':
-          flushPendingSegments(currentSessionId, -1)
-          store.flushSessionStreamBuffer(currentSessionId)
+          store.archiveCurrentIteration(currentSessionId)
           store.setSessionConnectionStatus(currentSessionId, 'disconnected')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
@@ -174,7 +135,7 @@ export function useSseStream(
           break
       }
     },
-    [updateSessionStatus, queryClient, flushPendingSegments]
+    [updateSessionStatus, queryClient]
   )
 
   const submit = useCallback(
@@ -223,14 +184,13 @@ export function useSseStream(
       const abortController = getOrCreateAbortController(currentSessionId)
 
       store.startStreaming(currentSessionId)
-      store.initSessionStreamBuffer(currentSessionId)
-
       store.appendSessionMessage(currentSessionId, {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: '',
         timestamp: new Date().toISOString(),
         isStreaming: true,
+        currentIteration: { iteration: 0 },
       })
 
       try {
@@ -244,10 +204,11 @@ export function useSseStream(
         if (abortController.signal.aborted) return
         const message = '发送消息失败，请重试'
         toast.error(message)
+        store.archiveCurrentIteration(currentSessionId)
         store.setSessionConnectionStatus(currentSessionId, 'error')
         store.stopStreaming(currentSessionId)
         store.setSessionRequestId(currentSessionId, null)
-        store.updateSessionLastMessage(currentSessionId, { isError: true, isStreaming: false })
+        store.updateSessionLastMessage(currentSessionId, { isError: true, isStreaming: false, currentIteration: undefined })
       }
     },
     [createSession, handleSseEvent, options]
@@ -264,7 +225,7 @@ export function useSseStream(
     } catch (err) {
       if (err instanceof ApiError && err.code === 'SESSION_NOT_BUSY') {
         const store = useChatStore.getState()
-        store.flushSessionStreamBuffer(currentSessionId)
+        store.archiveCurrentIteration(currentSessionId)
         store.setSessionConnectionStatus(currentSessionId, 'disconnected')
         store.stopStreaming(currentSessionId)
         store.setSessionRequestId(currentSessionId, null)
@@ -275,7 +236,7 @@ export function useSseStream(
     }
 
     const store = useChatStore.getState()
-    store.flushSessionStreamBuffer(currentSessionId)
+    store.archiveCurrentIteration(currentSessionId)
     store.setSessionConnectionStatus(currentSessionId, 'disconnected')
     store.stopStreaming(currentSessionId)
     store.setSessionRequestId(currentSessionId, null)
