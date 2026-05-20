@@ -33,7 +33,7 @@ export function ChatPage() {
     const store = useChatStore.getState()
     store.setActiveSessionId(sessionId)
 
-    if (!historyLoadedRef.current.has(sessionId)) {
+    if (!historyLoadedRef.current.has(sessionId) && !store.hasLoadedHistory(sessionId)) {
       historyLoadedRef.current.add(sessionId)
       const loadHistory = async () => {
         try {

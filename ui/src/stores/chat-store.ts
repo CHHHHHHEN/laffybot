@@ -110,7 +110,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       const messages = [...(state.messagesBySession[sessionId] ?? [])]
       if (messages.length === 0) return state
-      messages[messages.length - 1] = { ...messages[messages.length - 1], ...updates }
+      const last = messages[messages.length - 1]
+      if (last.role !== 'assistant') return state
+      messages[messages.length - 1] = { ...last, ...updates }
       return {
         messagesBySession: { ...state.messagesBySession, [sessionId]: messages },
       }

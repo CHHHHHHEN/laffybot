@@ -103,7 +103,9 @@ class McpClient:
                 raw = await self._transport.receive()
                 msg = _parse_response(raw)
                 msg_id = msg.get("id")
-                if msg_id is not None and msg_id != req_id:
+                if msg_id is None:
+                    continue
+                if msg_id != req_id:
                     logger.error(
                         "Response ID {} does not match request ID {}; discarding",
                         msg_id,
