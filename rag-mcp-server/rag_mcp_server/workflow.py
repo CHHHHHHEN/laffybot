@@ -166,7 +166,7 @@ class RAGEngine:
     async def _aindex_dir(self, path: str) -> int:
         from llama_index.core import VectorStoreIndex
         from llama_index.core.node_parser import MarkdownNodeParser
-        from llama_index.readers.file import SimpleDirectoryReader
+        from llama_index.core.readers import SimpleDirectoryReader
 
         p = Path(path)
         if not p.exists():

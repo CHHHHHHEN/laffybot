@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from pydantic import BaseModel, Field
 
 from laffybot.agent.tools.base import Tool, tool_parameters
@@ -247,6 +248,7 @@ class ReadFileTool(_FsTool):
             try:
                 current_mtime = os.path.getmtime(fp)
             except OSError:
+                logger.debug("Failed to get mtime for '{}', disabling dedup", fp)
                 current_mtime = 0.0
             if (
                 entry
@@ -769,6 +771,7 @@ class EditFileTool(_FsTool):
             try:
                 fsize = fp.stat().st_size
             except OSError:
+                logger.debug("Failed to stat file size for '{}', assuming 0", str(fp))
                 fsize = 0
             if fsize > self._MAX_EDIT_FILE_SIZE:
                 return f"Error: File too large to edit ({fsize / (1024**3):.1f} GiB). Maximum is 1 GiB."

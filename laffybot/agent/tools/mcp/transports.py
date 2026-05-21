@@ -273,8 +273,12 @@ class SseTransport(Transport):
             self._read_task.cancel()
             try:
                 await self._read_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception:
+                logger.warning(
+                    "Unexpected error awaiting cancelled SSE read task", exc_info=True
+                )
             self._read_task = None
         if self._response is not None:
             await self._response.aclose()
@@ -289,7 +293,11 @@ class SseTransport(Transport):
             async for sse in httpx_sse.EventSource(self._response).aiter_sse():  # type: ignore[arg-type]
                 if sse.event == "endpoint":
                     endpoint = sse.data.strip()
-                    self._post_url = endpoint if endpoint.startswith(("http://", "https://")) else urljoin(self._url, endpoint)
+                    self._post_url = (
+                        endpoint
+                        if endpoint.startswith(("http://", "https://"))
+                        else urljoin(self._url, endpoint)
+                    )
                     self._endpoint_event.set()
                 elif sse.event in ("message", "jsonrpc"):
                     try:

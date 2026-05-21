@@ -226,6 +226,9 @@ class OpenAIProvider(BaseProvider):
             try:
                 parsed = json_repair.loads(stripped)
             except Exception:
+                logger.warning(
+                    "Failed to parse tool call arguments, falling back to empty object"
+                )
                 return "{}"
             if isinstance(parsed, dict):
                 return json.dumps(parsed, ensure_ascii=False)
@@ -686,6 +689,7 @@ class OpenAIProvider(BaseProvider):
                 try:
                     payload = response_json()
                 except Exception:
+                    logger.debug("Failed to decode error response body as JSON")
                     payload = None
 
         status_code = getattr(e, "status_code", None)

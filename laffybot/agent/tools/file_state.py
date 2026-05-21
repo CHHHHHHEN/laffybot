@@ -8,6 +8,8 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from pathlib import Path
 
+from loguru import logger
+
 
 @dataclass(slots=True)
 class ReadState:
@@ -22,6 +24,7 @@ def _hash_file(p: str) -> str | None:
     try:
         return hashlib.sha256(Path(p).read_bytes()).hexdigest()
     except OSError:
+        logger.debug("Failed to hash file '{}'", p)
         return None
 
 
@@ -46,6 +49,9 @@ class FileStates:
         try:
             mtime = os.path.getmtime(p)
         except OSError:
+            logger.debug(
+                "Failed to get mtime for '{}' in record_read, skipping state", p
+            )
             return
         self._state[p] = ReadState(
             mtime=mtime,
@@ -61,6 +67,9 @@ class FileStates:
         try:
             mtime = os.path.getmtime(p)
         except OSError:
+            logger.debug(
+                "Failed to get mtime for '{}' in record_write, clearing state", p
+            )
             self._state.pop(p, None)
             return
         self._state[p] = ReadState(
@@ -85,6 +94,10 @@ class FileStates:
         try:
             current_mtime = os.path.getmtime(p)
         except OSError:
+            logger.debug(
+                "Failed to get mtime for '{}' in check_read, skipping staleness check",
+                p,
+            )
             return None
         if current_mtime != entry.mtime:
             if entry.content_hash and _hash_file(p) == entry.content_hash:
@@ -111,6 +124,9 @@ class FileStates:
         try:
             current_mtime = os.path.getmtime(p)
         except OSError:
+            logger.debug(
+                "Failed to get mtime for '{}' in is_unchanged, returning False", p
+            )
             return False
         if current_mtime != entry.mtime:
             # mtime changed - check if content also changed

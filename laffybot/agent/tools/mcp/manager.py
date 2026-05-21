@@ -263,8 +263,14 @@ class McpServerManager:
             task.cancel()
             try:
                 await task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
                 pass
+            except Exception:
+                logger.warning(
+                    "Unexpected error awaiting cancelled MCP task for '{}'",
+                    server_name,
+                    exc_info=True,
+                )
 
     async def shutdown(self) -> None:
         """Cancel all tasks and close all transports."""

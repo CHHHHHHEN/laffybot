@@ -11,6 +11,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from pydantic import BaseModel, Field
 
 from laffybot.agent.tools.base import Tool, tool_parameters
@@ -301,6 +302,10 @@ class ExecTool(Tool):
                         continue
                     p = Path(expanded).expanduser().resolve()
                 except Exception:
+                    logger.warning(
+                        "Failed to resolve path '{}' in path traversal guard, skipping",
+                        raw,
+                    )
                     continue
 
                 if self._is_benign_device_path(str(p)):
