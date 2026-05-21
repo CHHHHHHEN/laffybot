@@ -141,7 +141,7 @@ RAG MCP Server 作为独立 Python 包（`rag-mcp-server/`），通过 laffybot 
 ---
 
 **参考文件**：
-- `laffybot/agent/tools/mcp/manager.py` — MCP 服务器管理
+- `laffybot_agent_runtime/tools/mcp/manager.py` — MCP 服务器管理
 - `laffybot/session/mcp_server_store.py` — MCP 配置持久化
 - `docs/archive/rag-mcp-server-design-2026-05-21.md` — 原始设计计划
 - `docs/archive/rag-mcp-server-async-2026-05-21.md` — 异步化改造实施记录

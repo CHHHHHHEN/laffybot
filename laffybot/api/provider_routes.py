@@ -6,6 +6,7 @@ import time
 
 from fastapi import APIRouter, Depends
 from fastapi import status as http_status
+from laffybot_agent_runtime.providers.errors import ProviderConnectionError
 
 from laffybot.api.dependencies import get_provider_store
 from laffybot.api.schemas import (
@@ -17,7 +18,6 @@ from laffybot.api.schemas import (
     ProviderUpdateRequest,
     TestResultResponse,
 )
-from laffybot.providers.errors import ProviderConnectionError
 from laffybot.session.provider_store import ProviderRow, ProviderStore
 
 router = APIRouter()

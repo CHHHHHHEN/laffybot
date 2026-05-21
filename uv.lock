@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.15'",
 ]
 
+[manifest]
+members = [
+    "laffybot-agent-runtime",
+    "laffybot-ai",
+]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -696,6 +702,31 @@ wheels = [
 ]
 
 [[package]]
+name = "laffybot-agent-runtime"
+version = "0.1.0"
+source = { editable = "packages/laffybot-agent-runtime" }
+dependencies = [
+    { name = "httpx" },
+    { name = "httpx-sse" },
+    { name = "jinja2" },
+    { name = "json-repair" },
+    { name = "loguru" },
+    { name = "openai" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx" },
+    { name = "httpx-sse" },
+    { name = "jinja2" },
+    { name = "json-repair" },
+    { name = "loguru" },
+    { name = "openai" },
+    { name = "pydantic" },
+]
+
+[[package]]
 name = "laffybot-ai"
 version = "0.1.0"
 source = { editable = "." }
@@ -707,6 +738,7 @@ dependencies = [
     { name = "httpx-sse" },
     { name = "jinja2" },
     { name = "json-repair" },
+    { name = "laffybot-agent-runtime" },
     { name = "loguru" },
     { name = "openai" },
     { name = "pydantic" },
@@ -736,6 +768,7 @@ requires-dist = [
     { name = "httpx-sse" },
     { name = "jinja2" },
     { name = "json-repair" },
+    { name = "laffybot-agent-runtime", editable = "packages/laffybot-agent-runtime" },
     { name = "loguru" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "openai" },

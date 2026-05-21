@@ -6,9 +6,8 @@ import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
+from laffybot_agent_runtime.providers.errors import ProviderConfigError
 from loguru import logger
-
-from laffybot.providers.errors import ProviderConfigError
 
 ENCRYPTION_KEY_ENV_VAR = "LAFFYBOT_ENCRYPTION_KEY"
 ENV_FILE_NAME = ".env"

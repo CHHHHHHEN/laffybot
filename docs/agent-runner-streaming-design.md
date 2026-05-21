@@ -3,13 +3,13 @@
 > **✅ 实现状态：核心链路已实现，心跳与断线重放仍为预留能力**
 > 
 > 本文档描述的核心流式链路已实现。实现代码位于：
-> - `laffybot/agent/runner.py` - `AgentRunner.run_stream()` 方法
-> - `laffybot/agent/events.py` - SSE 事件类型定义
-> - `laffybot/agent/cancellation.py` - 取消机制
-> - `laffybot/agent/heartbeat.py` - 心跳机制
-> - `laffybot/providers/types.py` - `StreamChunk` 和 `ToolCallDelta` 类型
-> - `laffybot/providers/base.py` - 流式回调接口
-> - `laffybot/providers/openai.py` - OpenAI Provider 流式实现
+> - `laffybot_agent_runtime/runner.py` - `AgentRunner.run_stream()` 方法
+> - `laffybot_agent_runtime/events.py` - SSE 事件类型定义
+> - `laffybot_agent_runtime/cancellation.py` - 取消机制
+> - `laffybot_agent_runtime/heartbeat.py` - 心跳机制
+> - `laffybot_agent_runtime/providers/types.py` - `StreamChunk` 和 `ToolCallDelta` 类型
+> - `laffybot_agent_runtime/providers/base.py` - 流式回调接口
+> - `laffybot_agent_runtime/providers/openai.py` - OpenAI Provider 流式实现
 
 ## 概述
 
@@ -116,14 +116,14 @@ session_start
 
 | 组件 | 位置 | 实现状态 |
 |------|------|---------|
-| `AgentRunner` | `laffybot/agent/runner.py` | ✅ 支持流式执行，`run_stream()` 方法 |
-| `BaseProvider` | `laffybot/providers/base.py` | ✅ 已定义 `chat_completion_stream()` 抽象方法 |
-| `OpenAIProvider` | `laffybot/providers/openai.py` | ✅ 已实现流式支持，支持 `reasoning_content` |
-| `SSEEvent` | `laffybot/agent/events.py` | ✅ 完整事件类型定义 |
-| `CancellationToken` | `laffybot/agent/cancellation.py` | ✅ 取消机制 |
-| `HeartbeatManager` | `laffybot/agent/heartbeat.py` | ✅ 已实现并接入 SSE 路由 `_stream_session_events()` |
-| `StreamChunk` | `laffybot/providers/types.py` | ✅ 流式增量数据结构 |
-| `ToolCallDelta` | `laffybot/providers/types.py` | ✅ 工具调用增量结构 |
+| `AgentRunner` | `laffybot_agent_runtime/runner.py` | ✅ 支持流式执行，`run_stream()` 方法 |
+| `BaseProvider` | `laffybot_agent_runtime/providers/base.py` | ✅ 已定义 `chat_completion_stream()` 抽象方法 |
+| `OpenAIProvider` | `laffybot_agent_runtime/providers/openai.py` | ✅ 已实现流式支持，支持 `reasoning_content` |
+| `SSEEvent` | `laffybot_agent_runtime/events.py` | ✅ 完整事件类型定义 |
+| `CancellationToken` | `laffybot_agent_runtime/cancellation.py` | ✅ 取消机制 |
+| `HeartbeatManager` | `laffybot_agent_runtime/heartbeat.py` | ✅ 已实现并接入 SSE 路由 `_stream_session_events()` |
+| `StreamChunk` | `laffybot_agent_runtime/providers/types.py` | ✅ 流式增量数据结构 |
+| `ToolCallDelta` | `laffybot_agent_runtime/providers/types.py` | ✅ 工具调用增量结构 |
 
 ### 已实现流式能力
 
@@ -167,7 +167,7 @@ session_start
 **目标**：实现 `content` 和 `reasoning` 事件输出
 
 **变更范围**：
-- 新增 `laffybot/agent/events.py` - 事件类型定义 ✅
+- 新增 `laffybot_agent_runtime/events.py` - 事件类型定义 ✅
 - 修改 `AgentRunner` - 添加 `run_stream()` 方法 ✅
 - 集成 `provider.chat_completion_stream()` ✅
 
@@ -266,7 +266,7 @@ session_start
 ```
 
 **心跳机制**：
-- 默认间隔 15 秒（可通过环境变量 `LAFFYBOT_HEARTBEAT_INTERVAL_S` 配置）
+- 默认间隔 15 秒（可通过环境变量 `LAFFYBOT_AGENT_RUNTIME_HEARTBEAT_INTERVAL_S` 配置）
 - 每次发送事件后重置心跳计时器
 - 详细设计见「心跳机制设计」章节
 
@@ -401,7 +401,7 @@ AgentRunner.run_stream() (检查取消状态)
 
 | 参数 | 默认值 | 环境变量 |
 |------|--------|----------|
-| 心跳间隔 | 15 秒 | `LAFFYBOT_HEARTBEAT_INTERVAL_S` |
+| 心跳间隔 | 15 秒 | `LAFFYBOT_AGENT_RUNTIME_HEARTBEAT_INTERVAL_S` |
 | 最小间隔 | 5 秒 | - |
 
 ### 核心组件

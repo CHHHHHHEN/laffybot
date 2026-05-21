@@ -5,16 +5,17 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
+from laffybot_agent_runtime.context.tokens import ApproximateTokenCounter
 from loguru import logger
 
-from laffybot.context.tokens import ApproximateTokenCounter
 from laffybot.memory.config import MemoryConfig
 from laffybot.memory.consolidated_store import ConsolidatedMemoryStore
 from laffybot.memory.store import MemoryStore, SQLiteMemoryStore
 
 if TYPE_CHECKING:
+    from laffybot_agent_runtime.providers.base import BaseProvider
+
     from laffybot.memory.consolidator import MemoryConsolidator
-    from laffybot.providers.base import BaseProvider
 
 
 class MemoryManager:

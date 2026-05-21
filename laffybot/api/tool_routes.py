@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from laffybot_agent_runtime.tools.registry import ToolRegistry
 
-from laffybot.agent.tools.registry import ToolRegistry
 from laffybot.api.dependencies import get_tool_registry
 
 router = APIRouter()

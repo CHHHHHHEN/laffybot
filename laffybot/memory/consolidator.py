@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+from laffybot_agent_runtime.providers.types import ErrorLLMResponse
 from loguru import logger
 
 from laffybot.memory.consolidated_store import ConsolidatedMemoryStore
 from laffybot.memory.prompts import CONSOLIDATE_MEMORY_PROMPT
 from laffybot.memory.store import MemoryStore
-from laffybot.providers.types import ErrorLLMResponse
 
 if TYPE_CHECKING:
-    from laffybot.providers.base import BaseProvider
+    from laffybot_agent_runtime.providers.base import BaseProvider
 
 
 class MemoryConsolidator:

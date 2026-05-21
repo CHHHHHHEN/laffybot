@@ -72,7 +72,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 ---
 
 #### [CRITICAL] Arbitrary Command Execution via MCP Stdio Configuration
-**Location:** `laffybot/agent/tools/mcp/transports.py:60-88`, `laffybot/api/mcp_routes.py:113-138`  
+**Location:** `laffybot_agent_runtime/tools/mcp/transports.py:60-88`, `laffybot/api/mcp_routes.py:113-138`  
 **Severity:** Critical
 
 **Finding:** The MCP server configuration allows arbitrary command execution through the `stdio` transport type. Combined with no authentication, any user can create an MCP server that executes arbitrary commands.
@@ -121,7 +121,7 @@ cors_origins: list[str] = Field(
 ### 1.2 High Severity Issues
 
 #### [HIGH] Command Deny Patterns Bypassable
-**Location:** `laffybot/agent/tools/shell.py:64-74, 273-315`  
+**Location:** `laffybot_agent_runtime/tools/shell.py:64-74, 273-315`  
 **Severity:** High
 
 **Finding:** The shell tool implements a deny-list pattern system for dangerous commands, but deny-lists are inherently bypassable.
@@ -141,7 +141,7 @@ cors_origins: list[str] = Field(
 ---
 
 #### [HIGH] Path Traversal via working_dir
-**Location:** `laffybot/agent/tools/shell.py:122-137`  
+**Location:** `laffybot_agent_runtime/tools/shell.py:122-137`  
 **Severity:** High
 
 **Finding:** The `restrict_to_workspace` feature only checks if working_dir is under workspace, but doesn't prevent `..` in the command itself when `restrict_to_workspace=True`.
@@ -155,7 +155,7 @@ cors_origins: list[str] = Field(
 ---
 
 #### [HIGH] MCP Environment Variables Unvalidated
-**Location:** `laffybot/session/mcp_server_store.py:168-241`, `laffybot/agent/tools/mcp/transports.py:41-48`  
+**Location:** `laffybot/session/mcp_server_store.py:168-241`, `laffybot_agent_runtime/tools/mcp/transports.py:41-48`  
 **Severity:** High
 
 **Finding:** The `env` field in MCP server configuration allows passing arbitrary environment variables to subprocesses, including potentially sensitive values.
@@ -231,7 +231,7 @@ app.state.limiter = limiter
 ---
 
 #### [MEDIUM] Path Traversal Despite Safeguards
-**Location:** `laffybot/agent/tools/filesystem.py:21-48, 79-83`  
+**Location:** `laffybot_agent_runtime/tools/filesystem.py:21-48, 79-83`  
 **Severity:** Medium
 
 **Finding:** The filesystem tools have well-designed path traversal protections, but the default configuration uses `Path.cwd()` as workspace without restrictions.
@@ -285,7 +285,7 @@ tool_registry_obj.register(ReadFileTool(workspace=workspace, allowed_dir=workspa
 ---
 
 #### [CRITICAL] OpenAIProvider is Monolithic
-**Location:** `laffybot/providers/openai.py:181-847`  
+**Location:** `laffybot_agent_runtime/providers/openai.py:181-847`  
 **Severity:** Critical
 
 **Finding:** `OpenAIProvider` has 666 lines with mixed concerns.
@@ -352,7 +352,7 @@ class LLMExtractor(Protocol):
 ---
 
 #### [MEDIUM] SSEEvent is a God Class
-**Location:** `laffybot/agent/events.py:28-127`  
+**Location:** `laffybot_agent_runtime/events.py:28-127`  
 **Severity:** Medium
 
 **Finding:** Single `SSEEvent` dataclass with all possible fields for all event types.
@@ -379,8 +379,8 @@ class ToolCallEvent(SSEEvent):
 **Finding:** Configuration split across multiple files:
 - `laffybot/config.py`
 - `laffybot/memory/config.py`
-- `laffybot/context/types.py`
-- `laffybot/providers/config.py`
+- `laffybot_agent_runtime/context/types.py`
+- `laffybot_agent_runtime/providers/config.py`
 
 **Recommendation:** Create `Settings` facade as single entry point.
 
@@ -460,7 +460,7 @@ except Exception:
 ---
 
 #### [MEDIUM] Tool Timeout Converted to String
-**Location:** `laffybot/agent/runner.py:203-211`  
+**Location:** `laffybot_agent_runtime/runner.py:203-211`  
 **Severity:** Medium
 
 **Finding:** Tool timeout is caught but converted to a string, losing exception type information.
@@ -558,7 +558,7 @@ class SessionMessage(TypedDict, total=False):
 ---
 
 #### [MEDIUM] MCP Transport Uses Any
-**Location:** `laffybot/agent/tools/mcp/client.py:71`
+**Location:** `laffybot_agent_runtime/tools/mcp/client.py:71`
 
 ```python
 def __init__(self, transport: Any) -> None:
@@ -944,7 +944,7 @@ async def _lock_for(self, session_id: str) -> asyncio.Lock:
 ---
 
 #### [CRITICAL] CancellationToken Thread Safety
-**Location:** `laffybot/agent/cancellation.py:16-58`
+**Location:** `laffybot_agent_runtime/cancellation.py:16-58`
 
 **Finding:** `CancellationToken` uses simple boolean/string fields without synchronization.
 
@@ -961,7 +961,7 @@ def cancel(self, reason: str | None = None) -> None:
 ---
 
 #### [CRITICAL] Sync Tool Execution Blocking Event Loop
-**Location:** `laffybot/agent/tools/registry.py:139-160`
+**Location:** `laffybot_agent_runtime/tools/registry.py:139-160`
 
 **Finding:** If a tool's `execute` method is synchronous (blocking), it will block the event loop.
 
@@ -1006,7 +1006,7 @@ finally:
 ---
 
 #### [HIGH] ToolRegistry Concurrent Modification
-**Location:** `laffybot/agent/tools/registry.py:18-27`
+**Location:** `laffybot_agent_runtime/tools/registry.py:18-27`
 
 **Finding:** No synchronization for `_tools` dictionary modifications.
 
@@ -1047,14 +1047,14 @@ if not self._lock.locked():  # Check
 ---
 
 #### [MEDIUM] StdioTransport File Handle Leak
-**Location:** `laffybot/agent/tools/mcp/transports.py:80`
+**Location:** `laffybot_agent_runtime/tools/mcp/transports.py:80`
 
 **Finding:** `stderr_file` opened but never closed.
 
 ---
 
 #### [MEDIUM] Unbounded Queues
-**Location:** `laffybot/api/event_bus.py:64`, `laffybot/agent/runner.py:106`
+**Location:** `laffybot/api/event_bus.py:64`, `laffybot_agent_runtime/runner.py:106`
 
 **Finding:** `asyncio.Queue()` created without maxsize.
 

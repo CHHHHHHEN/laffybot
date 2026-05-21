@@ -7,14 +7,18 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi import status as http_status
-
-from laffybot.agent.tools.mcp.client import McpClient, McpError, McpProtocolError
-from laffybot.agent.tools.mcp.manager import (
+from laffybot_agent_runtime.tools.mcp.client import (
+    McpClient,
+    McpError,
+    McpProtocolError,
+)
+from laffybot_agent_runtime.tools.mcp.manager import (
     MCPServerConfig,
     McpServerManager,
     create_transport,
 )
-from laffybot.agent.tools.mcp.transports import TransportError
+from laffybot_agent_runtime.tools.mcp.transports import TransportError
+
 from laffybot.api.dependencies import get_mcp_manager, get_mcp_server_store
 from laffybot.api.schemas import (
     MCPServerCreateRequest,

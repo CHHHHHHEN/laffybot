@@ -2,6 +2,9 @@
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [project]
 name = "laffybot-ai"
 version = "0.1.0"
@@ -9,6 +12,7 @@ description = "Add your description here"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.12"
 dependencies = [
+    "laffybot-agent-runtime >= 0.1.0",
     "loguru",
     "fastapi",
     "uvicorn",
@@ -22,6 +26,9 @@ dependencies = [
     "jinja2",
     "cryptography",
 ]
+
+[tool.uv.sources]
+laffybot-agent-runtime = { workspace = true }
 
 [project.scripts]
 laffybot = "laffybot.__main__:main"
@@ -67,6 +74,7 @@ strict = true
 warn_return_any = true
 warn_unused_ignores = true
 exclude = ["third-party/"]
+mypy_path = ["packages/laffybot-agent-runtime/src"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"

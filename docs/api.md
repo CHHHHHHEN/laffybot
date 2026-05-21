@@ -213,7 +213,7 @@ data: {"type": "done", "stop_reason": "completed", "usage": {"prompt_tokens": 15
 
 > **注意:** `reasoning` 事件由后端统一处理不同 LLM 提供商的思维链格式差异（如 DeepSeek 的 `reasoning_content` 字段），对外暴露统一的事件格式，客户端无需关心底层实现细节。
 
-> **当前代码注记：** `laffybot/agent/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，`/sessions/{session_id}/messages` SSE 路径已通过 `HeartbeatManager.wait_for_ping()` 接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
+> **当前代码注记：** `laffybot_agent_runtime/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，`/sessions/{session_id}/messages` SSE 路径已通过 `HeartbeatManager.wait_for_ping()` 接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
 
 **实现说明：**
 

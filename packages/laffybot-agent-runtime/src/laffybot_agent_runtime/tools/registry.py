@@ -1,0 +1,171 @@
+"""Tool registry for dynamic tool management."""
+
+from typing import Any
+
+from laffybot_agent_runtime.tools.base import Tool
+from laffybot_agent_runtime.tools.errors import ToolError
+
+_HINT = "\n\n[Analyze the error above and try a different approach.]"
+
+
+class ToolRegistry:
+    """
+    Registry for agent tools.
+
+    Allows dynamic registration and execution of tools.
+    """
+
+    def __init__(self) -> None:
+        self._tools: dict[str, Tool] = {}
+        self._disabled: set[str] = set()
+        self._cached_definitions: list[dict[str, Any]] | None = None
+
+    def register(self, tool: Tool) -> None:
+        """Register a tool."""
+        self._tools[tool.name] = tool
+        self._disabled.discard(tool.name)
+        self._cached_definitions = None
+
+    def unregister(self, name: str) -> None:
+        """Unregister a tool by name."""
+        self._tools.pop(name, None)
+        self._disabled.discard(name)
+        self._cached_definitions = None
+
+    def unregister_group(self, prefix: str) -> None:
+        """Unregister all tools whose name starts with *prefix*."""
+        to_remove = [n for n in self._tools if n.startswith(prefix)]
+        for name in to_remove:
+            self._tools.pop(name, None)
+            self._disabled.discard(name)
+        if to_remove:
+            self._cached_definitions = None
+
+    def get(self, name: str) -> Tool | None:
+        """Get a tool by name."""
+        return self._tools.get(name)
+
+    def has(self, name: str) -> bool:
+        """Check if a tool is registered."""
+        return name in self._tools
+
+    def disable(self, name: str) -> None:
+        """Disable a tool so it won't be sent to the LLM."""
+        if name not in self._tools:
+            raise ToolError(
+                f"Tool '{name}' not found", code="TOOL_NOT_FOUND", tool_name=name
+            )
+        self._disabled.add(name)
+        self._cached_definitions = None
+
+    def enable(self, name: str) -> None:
+        """Enable a previously disabled tool."""
+        self._disabled.discard(name)
+        self._cached_definitions = None
+
+    def is_enabled(self, name: str) -> bool:
+        """Check if a tool is currently enabled."""
+        return name not in self._disabled
+
+    @staticmethod
+    def _schema_name(schema: dict[str, Any]) -> str:
+        """Extract a normalized tool name from either OpenAI or flat schemas."""
+        fn = schema.get("function")
+        if isinstance(fn, dict):
+            name = fn.get("name")
+            if isinstance(name, str):
+                return name
+        name = schema.get("name")
+        return name if isinstance(name, str) else ""
+
+    def get_definitions(self) -> list[dict[str, Any]]:
+        """Get tool definitions with stable ordering for cache-friendly prompts.
+
+        Built-in tools are sorted first as a stable prefix, then MCP tools are
+        sorted and appended.  The result is cached until the next
+        register/unregister call.
+        """
+        if self._cached_definitions is not None:
+            return self._cached_definitions
+
+        builtins: list[dict[str, Any]] = []
+        mcp_tools: list[dict[str, Any]] = []
+        for name, tool in self._tools.items():
+            if name in self._disabled:
+                continue
+            schema = tool.to_schema()
+            if getattr(tool, "kind", "builtin") == "mcp":
+                mcp_tools.append(schema)
+            else:
+                builtins.append(schema)
+
+        builtins.sort(key=self._schema_name)
+        mcp_tools.sort(key=self._schema_name)
+        self._cached_definitions = builtins + mcp_tools
+        return self._cached_definitions
+
+    def prepare_call(
+        self,
+        name: str,
+        params: dict[str, Any],
+    ) -> tuple[Tool | None, dict[str, Any], str | None]:
+        """Resolve, cast, and validate one tool call.
+
+        Returns ``(tool, cast_params, None)`` on success, or
+        ``(tool_or_None, params, error_message)`` on failure.
+        Raises ``ToolError`` for structural issues that should propagate.
+        """
+        tool = self._tools.get(name)
+        if not tool:
+            return (
+                None,
+                params,
+                (
+                    f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
+                ),
+            )
+
+        try:
+            cast_params = tool.cast_params(params)
+            return tool, cast_params, None
+        except Exception as e:
+            msg = str(e) if str(e) else type(e).__name__
+            return (
+                tool,
+                params,
+                f"Error: Invalid parameters for tool '{name}': {msg}",
+            )
+
+    async def execute(self, name: str, params: dict[str, Any]) -> Any:
+        """Execute a tool by name with given parameters.
+
+        Returns the tool result (normally a string).  On failure the result
+        starts with ``"Error:"`` so the LLM can self-correct.
+        """
+        _hint = _HINT
+        tool, params, error = self.prepare_call(name, params)
+        if error:
+            return error + _hint
+
+        try:
+            if tool is None:
+                return f"Error: Tool '{name}' not found after preparation" + _hint
+            result = await tool.execute(**params)
+            if isinstance(result, str) and result.startswith("Error"):
+                return result + _hint
+            return result
+        except ToolError as e:
+            return f"Error executing {name}: {e}" + _hint
+        except Exception as e:
+            return f"Error executing {name}: {str(e)}" + _hint
+
+    @property
+    def tool_names(self) -> list[str]:
+        """Get list of registered tool names."""
+        return list(self._tools.keys())
+
+    def __len__(self) -> int:
+        return len(self._tools)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._tools

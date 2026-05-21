@@ -91,11 +91,13 @@ class AppSettingStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def set_enabled_skills(self, names: list[str]) -> None:
+    async def set_enabled_skills(self, skills: list[str]) -> None:
+        """Set the list of enabled skill names."""
         raise NotImplementedError
 
     @abstractmethod
     async def close(self) -> None:
+        """Close the store, releasing resources."""
         raise NotImplementedError
 
 
@@ -216,8 +218,8 @@ class SQLiteAppSettingStore(AppSettingStore):
         except json.JSONDecodeError:
             return []
 
-    async def set_enabled_skills(self, names: list[str]) -> None:
-        await self._set_raw("enabled_skills", json.dumps(names, ensure_ascii=False))
+    async def set_enabled_skills(self, skills: list[str]) -> None:
+        await self._set_raw("enabled_skills", json.dumps(skills, ensure_ascii=False))
 
     async def close(self) -> None:
         if self._db is not None:

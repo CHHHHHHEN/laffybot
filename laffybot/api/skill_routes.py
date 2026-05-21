@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from laffybot_agent_runtime.skills import SkillRegistry, SkillsLoader
 
-from laffybot.agent.skills import SkillRegistry, SkillsLoader
 from laffybot.api.dependencies import (
     get_app_setting_store,
     get_skill_registry,

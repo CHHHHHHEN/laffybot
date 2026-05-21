@@ -4,10 +4,10 @@ from collections import namedtuple
 from unittest.mock import AsyncMock
 
 import pytest
+from laffybot_agent_runtime.config import ContextConfig
+from laffybot_agent_runtime.context.builder import SimpleContextBuilder
+from laffybot_agent_runtime.tools.registry import ToolRegistry
 
-from laffybot.agent.tools.registry import ToolRegistry
-from laffybot.config import ContextConfig
-from laffybot.context.builder import SimpleContextBuilder
 from laffybot.session.errors import SessionNotBusyError
 from laffybot.session.manager import SessionManager
 from laffybot.session.store import SQLiteStore

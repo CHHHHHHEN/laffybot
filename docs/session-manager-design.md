@@ -19,7 +19,7 @@
 | SQLiteStore 取消归档 | ✅ 已实现 | `laffybot/session/store.py:SQLiteStore.unarchive_session` |
 | SessionInfo 数据结构 | ✅ 已实现 | `laffybot/session/models.py` |
 | ContextBuilder 集成 | ✅ 已实现 | `laffybot/session/manager.py` → `_build_messages` |
-| CancellationToken | ✅ 已实现 | `laffybot/agent/cancellation.py` |
+| CancellationToken | ✅ 已实现 | `laffybot_agent_runtime/cancellation.py` |
 | 并发控制 (asyncio.Lock) | ✅ 已实现 | `laffybot/session/manager.py` → `_locks` |
 | Token 元数据持久化 | ✅ 已实现 | `laffybot/session/store.py` → `save_message` |
 | 异常定义（含 SessionNotArchivedError） | ✅ 已实现 | `laffybot/session/errors.py` |
@@ -90,7 +90,7 @@ SessionManager 是 Laffybot API 的核心组件，负责管理会话生命周期
 消息发送协调 ✅、取消请求处理 ✅、错误恢复 ✅
 
 ### 4. 上下文构建
-> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py:_build_messages`, `laffybot/context/builder.py`
+> **实现状态**: ✅ 已实现 | **参考**: `laffybot/session/manager.py:_build_messages`, `laffybot_agent_runtime/context/builder.py`
 
 历史消息查询 ✅、系统提示组装 ✅、完整上下文构建 ✅
 

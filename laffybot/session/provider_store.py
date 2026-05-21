@@ -10,15 +10,15 @@ from pathlib import Path
 from typing import Any
 
 import aiosqlite
-from loguru import logger
-
-from laffybot.crypto import decrypt_api_key, encrypt_api_key
-from laffybot.providers.config import ProviderConfig
-from laffybot.providers.errors import (
+from laffybot_agent_runtime.providers.config import ProviderConfig
+from laffybot_agent_runtime.providers.errors import (
     ModelNameConflictError,
     ModelNotFoundError,
     ProviderNotFoundError,
 )
+from loguru import logger
+
+from laffybot.crypto import decrypt_api_key, encrypt_api_key
 
 _PROVIDER_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS providers (

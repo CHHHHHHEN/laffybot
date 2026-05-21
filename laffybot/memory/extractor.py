@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from laffybot_agent_runtime.context.tokens import ApproximateTokenCounter
+from laffybot_agent_runtime.providers.types import ErrorLLMResponse
 from loguru import logger
 
-from laffybot.context.tokens import ApproximateTokenCounter
 from laffybot.memory.prompts import EXTRACT_MEMORY_PROMPT
-from laffybot.providers.types import ErrorLLMResponse
 
 if TYPE_CHECKING:
-    from laffybot.providers.base import BaseProvider
+    from laffybot_agent_runtime.providers.base import BaseProvider
 
 # Token budget reserved for the extraction prompt itself
 PROMPT_TOKEN_BUDGET = 500

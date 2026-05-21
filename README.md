@@ -2,7 +2,7 @@
 
 # Laffybot 项目整体结构报告
 
-> 撰写日期：2026-05-13
+> 撰写日期：2026-05-21
 
 ---
 
@@ -41,40 +41,41 @@ laffybot/
 │   │   ├── dependencies.py      # 依赖注入（factory, store 构建）
 │   │   └── errors.py            # 领域异常 → HTTP 响应映射
 │   │
-│   ├── agent/                   # Agent 执行层
-│   │   ├── runner.py            # AgentRunner: LLM 循环 + 流式事件
-│   │   ├── events.py            # SSE 事件类型 & 工厂函数
-│   │   ├── cancellation.py      # CancellationToken 取消机制
-│   │   ├── heartbeat.py         # HeartbeatManager 心跳保活
-│   │   └── tools/               # 工具系统
-│   │       ├── base.py          # Tool 抽象基类 + Pydantic @tool_parameters
-│   │       ├── errors.py        # ToolError 领域异常
-│   │       └── registry.py      # ToolRegistry 注册/执行
-│   │
-│   ├── providers/               # LLM 提供商抽象层
-│   │   ├── base.py              # BaseProvider 抽象接口
-│   │   ├── openai.py            # OpenAIProvider 实现（流式 + 非流式）
-│   │   └── types.py             # LLMResponse, StreamChunk, ToolCallRequest
-│   │
 │   ├── session/                 # 会话管理层
 │   │   ├── manager.py           # SessionManager: 状态协调 + 请求调度
 │   │   ├── store.py             # SessionStore 接口 + SQLiteStore 实现
 │   │   ├── models.py            # 领域模型 (SessionInfo, SessionStatus)
 │   │   └── errors.py            # 领域异常 (SessionNotFound, SessionBusy...)
 │   │
-│   └── context/                 # 上下文构建层
-│       ├── base.py              # ContextBuilder / TokenCounter 抽象接口
-│       ├── builder.py           # SimpleContextBuilder 实现
-│       ├── tokens.py            # ApproximateTokenCounter + UsageBasedTokenCounter
-│       ├── templates.py         # SystemPromptTemplate (Jinja2)
-│       └── types.py             # 上下文类型（重导出 ContextConfig）
+│   ├── memory/                  # 记忆管理层
+│   ├── crypto.py                # API 密钥加密
+│   └── config.py                # ApiConfig (Pydantic BaseSettings)
 │
-├── tests/                       # Python 测试
+├── packages/                    # 独立发布子包
+│   └── laffybot-agent-runtime/  # Agent 执行引擎 (laffybot_agent_runtime)
+│       ├── pyproject.toml       # 独立版本号 & 依赖
+│       └── src/
+│           └── laffybot_agent_runtime/
+│               ├── runner.py            # AgentRunner: LLM 循环 + 流式事件
+│               ├── events.py            # SSE 事件类型 & 工厂函数
+│               ├── cancellation.py      # CancellationToken 取消机制
+│               ├── heartbeat.py         # HeartbeatManager 心跳保活
+│               ├── title_generator.py   # 自动标题生成
+│               ├── config.py            # ContextConfig
+│               ├── tools/               # 工具系统
+│               ├── skills/              # Skill 系统
+│               ├── context/             # 上下文构建层
+│               ├── providers/           # LLM 提供商抽象层
+│               └── tests/               # Agent 运行时测试
+│                   ├── agent/
+│                   ├── context/
+│                   └── providers/
+│
+├── tests/                       # Python 测试（laffybot 主包）
 │   ├── __init__.py
-│   ├── context/
-│   │   └── __init__.py
-│   └── api/
-│       └── __pycache__/         # 仅缓存，无源码
+│   └── session/
+│       ├── test_session_manager.py
+│       └── test_store.py
 │
 ├── ui/                          # 前端 SPA
 │   ├── index.html               # HTML 入口
@@ -171,24 +172,26 @@ laffybot/
 ### 3.1 分层架构
 
 ```
-┌──────────────────────────────────────────────────┐
-│              HTTP API 层 (laffybot/api)            │
-│  FastAPI 路由 → 参数校验 → 错误映射 → SSE 流式响应    │
-├──────────────────────────────────────────────────┤
-│            会话管理层 (laffybot/session)            │
-│  SessionManager: 状态机 + 并发锁 + 事件转发          │
-│  │  SQLiteStore: 数据库 CRUD + 乐观锁 + WAL 模式    │
-├──────────────────────────────────────────────────┤
-│           Agent 执行层 (laffybot/agent)             │
-│  AgentRunner: LLM 循环 + 工具调用 + SSE 事件流      │
-│  │  ToolRegistry: 工具注册/参数校验/执行             │
-├──────────────────────────────────────────────────┤
-│           LLM 提供商层 (laffybot/providers)         │
-│  OpenAIProvider: OpenAI/DeepSeek/OpenRouter 兼容   │
-├──────────────────────────────────────────────────┤
-│         上下文构建层 (laffybot/context)              │
-│  SimpleContextBuilder: 系统提示 + 历史 + 容量控制    │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│              HTTP API 层 (laffybot/api)                │
+│  FastAPI 路由 → 参数校验 → 错误映射 → SSE 流式响应      │
+├──────────────────────────────────────────────────────┤
+│              会话管理层 (laffybot/session)              │
+│  SessionManager: 状态机 + 并发锁 + 事件转发            │
+│  │  SQLiteStore: 数据库 CRUD + 乐观锁 + WAL 模式       │
+├──────────────────────────────────────────────────────┤
+│  ┌─── laffybot_agent_runtime (独立包) ──────────────┐ │
+│  │   Agent 执行层                             │ │
+│  │   AgentRunner: LLM 循环 + 工具调用 + SSE 事件流 │ │
+│  │   │  ToolRegistry: 工具注册/参数校验/执行       │ │
+│  │   ├─────────────────────────────────────────┤ │ │
+│  │   LLM 提供商层                              │ │
+│  │   OpenAIProvider: OpenAI/DeepSeek/OpenRouter │ │ │
+│  │   ├─────────────────────────────────────────┤ │ │
+│  │   上下文构建层                               │ │ │
+│  │   SimpleContextBuilder: 系统提示+历史+容量控制│ │ │
+│  └───────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 核心数据流
@@ -297,7 +300,7 @@ idle ──(发送消息)──→ busy ──(完成)──→ idle
 | max_tokens / max_messages | ContextConfig | 上下文容量控制 |
 | system_prompt / system_prompt_template | ContextConfig | 系统提示 / Jinja2 模板 |
 | LAFFYBOT_STREAM_IDLE_TIMEOUT_S | 环境变量 | 流空闲超时（默认 90s） |
-| LAFFYBOT_HEARTBEAT_INTERVAL_S | 环境变量 | 心跳间隔（默认 15s） |
+| LAFFYBOT_AGENT_RUNTIME_HEARTBEAT_INTERVAL_S | 环境变量 | 心跳间隔（默认 15s） |
 | LAFFYBOT_OPENAI_COMPAT_TIMEOUT_S | 环境变量 | OpenAI 请求超时（默认 120s） |
 
 ---

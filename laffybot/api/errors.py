@@ -6,9 +6,7 @@ from typing import Any
 
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
-from loguru import logger
-
-from laffybot.providers.errors import (
+from laffybot_agent_runtime.providers.errors import (
     ModelNameConflictError,
     ModelNotFoundError,
     NoActiveProviderError,
@@ -17,6 +15,8 @@ from laffybot.providers.errors import (
     ProviderError,
     ProviderNotFoundError,
 )
+from loguru import logger
+
 from laffybot.session.errors import (
     SessionAlreadyArchivedError,
     SessionBusyError,
