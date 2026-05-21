@@ -13,3 +13,6 @@
 [submodule "third-party/opencode"]
 	path = third-party/opencode
 	url = https://github.com/anomalyco/opencode
+[submodule "third-party/MODULAR-RAG-MCP-SERVER"]
+	path = third-party/MODULAR-RAG-MCP-SERVER
+	url = https://github.com/jerry-ai-dev/MODULAR-RAG-MCP-SERVER
