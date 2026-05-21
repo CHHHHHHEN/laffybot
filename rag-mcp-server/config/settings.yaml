@@ -63,3 +63,16 @@ include_patterns:
 exclude_patterns:
   - "**/node_modules/**"
   - "**/__pycache__/**"
+allowed_extensions:
+  - ".md"
+  - ".txt"
+  - ".pdf"
+  - ".py"
+  - ".js"
+  - ".ts"
+  - ".tsx"
+  - ".json"
+  - ".yaml"
+  - ".yml"
+  - ".toml"
+  - ".rst"

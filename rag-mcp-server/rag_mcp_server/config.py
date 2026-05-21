@@ -39,6 +39,20 @@ class RAGConfig(BaseModel):  # type: ignore[misc]
     document_paths: list[str] = ["./docs"]
     include_patterns: list[str] = ["**/*.md", "**/*.txt", "**/*.pdf"]
     exclude_patterns: list[str] = ["**/node_modules/**", "**/__pycache__/**"]
+    allowed_extensions: list[str] = [
+        ".md",
+        ".txt",
+        ".pdf",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".rst",
+    ]
     log_level: str = "INFO"
     log_file: str | None = None
 

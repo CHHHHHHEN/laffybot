@@ -17,6 +17,7 @@ class OpenAICompatibleEmbedding(BaseEmbedding):  # type: ignore[misc]
     for proxies, local inference servers, and any OpenAI-compatible API.
     """
 
+    model: str = Field(description="The embedding model name")
     api_base: str = Field(description="Base URL for the OpenAI-compatible API")
     api_key: str | None = Field(default=None, description="Optional API key")
     http_timeout: float = Field(default=60.0, description="HTTP request timeout")

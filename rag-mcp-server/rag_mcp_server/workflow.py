@@ -58,6 +58,7 @@ class RAGEngine:
         self._index: Any = None
         self._vector_store: Any = None
         self._embed_model: Any = None
+        self._storage_dir = str(Path(config.vector_store_path) / "_storage")
         self._db_path = str(Path(config.vector_store_path) / "ingestion.db")
         self._ingestion_db: Any = None
         self._watcher = FileWatcher(debounce_ms=config.watch.debounce_ms)
@@ -94,7 +95,27 @@ class RAGEngine:
         self._vector_store = ChromaVectorStore(chroma_collection=collection)
 
     def _load_index(self) -> None:
-        from llama_index.core import VectorStoreIndex
+        from llama_index.core import StorageContext, VectorStoreIndex
+        from llama_index.core.indices.loading import load_index_from_storage
+
+        storage_dir = Path(self._storage_dir)
+        if storage_dir.exists():
+            try:
+                storage_context = StorageContext.from_defaults(
+                    persist_dir=self._storage_dir,
+                    vector_store=self._vector_store,
+                )
+                self._index = load_index_from_storage(
+                    storage_context=storage_context,
+                    embed_model=self._embed_model,
+                )
+                self._logger.info(
+                    "Loaded index from persisted storage (%s docs)",
+                    len(self._index.ref_doc_info or {}),
+                )
+                return
+            except Exception as exc:
+                self._logger.warning("Failed to load from storage, falling back: %s", exc)
 
         try:
             self._index = VectorStoreIndex.from_vector_store(
@@ -170,13 +191,21 @@ class RAGEngine:
 
         p = Path(path)
         if not p.exists():
-            self._logger.error("Path does not exist: %s", path)
-            return 0
+            msg = f"Path does not exist: {path}. Provide an absolute path, or a relative path from the project root ({Path.cwd()})."
+            self._logger.error(msg)
+            raise FileNotFoundError(msg)
 
-        reader = SimpleDirectoryReader(
-            input_dir=str(p),
-            recursive=True,
-        )
+        if p.is_file():
+            reader = SimpleDirectoryReader(
+                input_files=[str(p)],
+                required_exts=self.config.allowed_extensions,
+            )
+        else:
+            reader = SimpleDirectoryReader(
+                input_dir=str(p),
+                recursive=True,
+                required_exts=self.config.allowed_extensions,
+            )
         documents = reader.load_data()
 
         parser = MarkdownNodeParser()
@@ -190,6 +219,7 @@ class RAGEngine:
             await self._index.ainsert_nodes(nodes)
         else:
             await self._index.ainsert_nodes(nodes)
+        self._save_storage()
 
         for node in nodes:
             source = node.metadata.get("file_path", "")
@@ -200,6 +230,10 @@ class RAGEngine:
             )
 
         return len(nodes)
+
+    def _save_storage(self) -> None:
+        Path(self._storage_dir).mkdir(parents=True, exist_ok=True)
+        self._index.storage_context.persist(persist_dir=self._storage_dir)
 
     async def aindex(self, paths: list[str]) -> int:
         total = 0
