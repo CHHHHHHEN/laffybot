@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-settings",
     "openai",
     "httpx",
+    "httpx_sse",
     "json-repair",
     "aiosqlite",
     "jinja2",
