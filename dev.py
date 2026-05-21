@@ -13,16 +13,22 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import atexit
 import os
 import platform
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 BACKEND_PORT = 8000
 FRONTEND_PORT = 1420
+
+_processes: list[psutil.Popen] = []
 
 
 def get_platform() -> str:
@@ -36,15 +42,17 @@ def run_command(
     cmd: list[str],
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
-) -> subprocess.Popen[Any]:
+) -> psutil.Popen:
     full_env = None
     if env:
         full_env = dict(os.environ)
         full_env.update(env)
 
-    if get_platform() == "windows":
+    is_windows = get_platform() == "windows"
+
+    if is_windows:
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        return subprocess.Popen(
+        return psutil.Popen(
             cmd,
             cwd=cwd,
             env=full_env,
@@ -52,10 +60,15 @@ def run_command(
             creationflags=creationflags,
         )
     else:
-        return subprocess.Popen(cmd, cwd=cwd, env=full_env)
+        return psutil.Popen(
+            cmd,
+            cwd=cwd,
+            env=full_env,
+            start_new_session=True,
+        )
 
 
-def start_backend(project_root: Path) -> subprocess.Popen[Any]:
+def start_backend(project_root: Path) -> psutil.Popen:
     print(f"[Backend] Starting on port {BACKEND_PORT}...")
     return run_command(
         ["uv", "run", "laffybot", "--config", str(project_root / "config.json")],
@@ -63,7 +76,7 @@ def start_backend(project_root: Path) -> subprocess.Popen[Any]:
     )
 
 
-def start_frontend_web(project_root: Path) -> subprocess.Popen[Any]:
+def start_frontend_web(project_root: Path) -> psutil.Popen:
     ui_dir = project_root / "ui"
     print(f"[Frontend] Starting Vite dev server on port {FRONTEND_PORT}...")
     return run_command(
@@ -72,7 +85,7 @@ def start_frontend_web(project_root: Path) -> subprocess.Popen[Any]:
     )
 
 
-def start_frontend_tauri(project_root: Path) -> subprocess.Popen[Any]:
+def start_frontend_tauri(project_root: Path) -> psutil.Popen:
     ui_dir = project_root / "ui"
     print("[Tauri] Starting Tauri dev mode...")
     return run_command(
@@ -81,25 +94,44 @@ def start_frontend_tauri(project_root: Path) -> subprocess.Popen[Any]:
     )
 
 
-def terminate_process(proc: subprocess.Popen[Any]) -> None:
-    if get_platform() == "windows":
-        proc.terminate()
-    else:
-        proc.send_signal(signal.SIGTERM)
+def kill_process_tree(proc: psutil.Popen) -> None:
+    try:
+        parent = psutil.Process(proc.pid)
+        children = parent.children(recursive=True)
+    except psutil.NoSuchProcess:
+        return
 
-
-def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
-    if get_platform() == "windows":
-        subprocess.call(
-            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    else:
+    for child in children:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, OSError):
-            proc.kill()
+            child.terminate()
+        except psutil.NoSuchProcess:
+            pass
+
+    try:
+        proc.terminate()
+    except psutil.NoSuchProcess:
+        pass
+
+    gone, alive = psutil.wait_procs(children + [parent], timeout=5)
+
+    for p in alive:
+        try:
+            p.kill()
+        except psutil.NoSuchProcess:
+            pass
+
+
+def cleanup() -> None:
+    print("\n[Shutdown] Stopping all processes...")
+    for proc in _processes:
+        if proc.is_running():
+            kill_process_tree(proc)
+    print("[Shutdown] Done.")
+
+
+def signal_handler(sig: int, frame: Any) -> None:
+    cleanup()
+    sys.exit(0)
 
 
 def main() -> None:
@@ -133,48 +165,29 @@ Examples:
     args = parser.parse_args()
 
     project_root = Path(__file__).parent.resolve()
-    processes: list[subprocess.Popen[Any]] = []
 
     if args.backend and args.frontend:
         print("Error: --backend and --frontend are mutually exclusive", file=sys.stderr)
         sys.exit(1)
 
-    def cleanup() -> None:
-        print("\n[Shutdown] Stopping processes...")
-        for proc in processes:
-            if proc.poll() is None:
-                terminate_process(proc)
-        for proc in processes:
-            if proc.poll() is None:
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    kill_process_tree(proc)
-        print("[Shutdown] Done.")
-
-    def signal_handler(sig: int, frame: Any) -> None:
-        cleanup()
-        sys.exit(0)
-
+    atexit.register(cleanup)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
         if args.frontend:
             proc = start_frontend_web(project_root)
-            processes.append(proc)
+            _processes.append(proc)
         elif args.backend:
             proc = start_backend(project_root)
-            processes.append(proc)
+            _processes.append(proc)
         else:
             backend_proc = start_backend(project_root)
-            processes.append(backend_proc)
-
-            import time
+            _processes.append(backend_proc)
 
             time.sleep(2)
 
-            if backend_proc.poll() is not None:
+            if not backend_proc.is_running():
                 print("Error: Backend failed to start", file=sys.stderr)
                 cleanup()
                 sys.exit(1)
@@ -183,15 +196,15 @@ Examples:
                 frontend_proc = start_frontend_tauri(project_root)
             else:
                 frontend_proc = start_frontend_web(project_root)
-            processes.append(frontend_proc)
+            _processes.append(frontend_proc)
 
-        for proc in processes:
+        for proc in _processes:
             proc.wait()
 
     except KeyboardInterrupt:
         pass
-    finally:
-        cleanup()
+    except Exception:
+        raise
 
 
 if __name__ == "__main__":
