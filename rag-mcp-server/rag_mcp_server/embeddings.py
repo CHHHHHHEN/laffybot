@@ -37,9 +37,12 @@ class OpenAICompatibleEmbedding(BaseEmbedding):  # type: ignore[misc]
             **kwargs,
         )
         self._client = httpx.Client(timeout=http_timeout)
+        self._async_client = httpx.AsyncClient(timeout=http_timeout)
         self._logger = get_logger("rag_mcp_server.embeddings")
 
-    def _call_api(self, texts: list[str]) -> list[list[float]]:
+    def _build_embedding_request(
+        self, texts: list[str]
+    ) -> tuple[str, dict[str, str], dict[str, Any]]:
         headers: dict[str, str] = {
             "Content-Type": "application/json",
         }
@@ -48,18 +51,9 @@ class OpenAICompatibleEmbedding(BaseEmbedding):  # type: ignore[misc]
 
         url = f"{self.api_base.rstrip('/')}/embeddings"
         payload: dict[str, Any] = {"input": texts, "model": self.model}
+        return url, headers, payload
 
-        try:
-            resp = self._client.post(url, json=payload, headers=headers)
-        except httpx.ConnectError as exc:
-            raise RuntimeError(
-                f"Embedding API connection failed: {exc}"
-            ) from exc
-        except httpx.TimeoutException as exc:
-            raise RuntimeError(
-                f"Embedding API timed out after {self.http_timeout}s: {exc}"
-            ) from exc
-
+    def _check_response(self, resp: httpx.Response, url: str) -> None:
         if resp.status_code == 401:
             raise RuntimeError("Embedding API returned 401 — check your API key")
         if resp.status_code == 404:
@@ -69,17 +63,9 @@ class OpenAICompatibleEmbedding(BaseEmbedding):  # type: ignore[misc]
             )
         resp.raise_for_status()
 
-        try:
-            data = resp.json()
-        except Exception as exc:
-            raise RuntimeError(
-                f"Embedding API returned non-JSON response: {resp.text[:500]}"
-            ) from exc
-
+    def _parse_embedding_response(self, texts: list[str], data: Any) -> list[list[float]]:
         if "data" not in data or not isinstance(data["data"], list):
-            raise RuntimeError(
-                f"Embedding API response missing 'data' array: {str(data)[:500]}"
-            )
+            raise RuntimeError(f"Embedding API response missing 'data' array: {str(data)[:500]}")
 
         results: list[list[float] | None] = [None] * len(texts)
         for item in data["data"]:
@@ -98,6 +84,52 @@ class OpenAICompatibleEmbedding(BaseEmbedding):  # type: ignore[misc]
 
         return results  # type: ignore[return-value]
 
+    def _call_api(self, texts: list[str]) -> list[list[float]]:
+        url, headers, payload = self._build_embedding_request(texts)
+
+        try:
+            resp = self._client.post(url, json=payload, headers=headers)
+        except httpx.ConnectError as exc:
+            raise RuntimeError(f"Embedding API connection failed: {exc}") from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                f"Embedding API timed out after {self.http_timeout}s: {exc}"
+            ) from exc
+
+        self._check_response(resp, url)
+
+        try:
+            data = resp.json()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Embedding API returned non-JSON response: {resp.text[:500]}"
+            ) from exc
+
+        return self._parse_embedding_response(texts, data)
+
+    async def _acall_api(self, texts: list[str]) -> list[list[float]]:
+        url, headers, payload = self._build_embedding_request(texts)
+
+        try:
+            resp = await self._async_client.post(url, json=payload, headers=headers)
+        except httpx.ConnectError as exc:
+            raise RuntimeError(f"Embedding API connection failed: {exc}") from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                f"Embedding API timed out after {self.http_timeout}s: {exc}"
+            ) from exc
+
+        self._check_response(resp, url)
+
+        try:
+            data = resp.json()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Embedding API returned non-JSON response: {resp.text[:500]}"
+            ) from exc
+
+        return self._parse_embedding_response(texts, data)
+
     def _get_text_embedding(self, text: str) -> list[float]:
         return self._call_api([text])[0]
 
@@ -112,13 +144,16 @@ class OpenAICompatibleEmbedding(BaseEmbedding):  # type: ignore[misc]
         return self._get_text_embedding(query)
 
     async def _aget_text_embedding(self, text: str) -> list[float]:
-        return self._get_text_embedding(text)
+        results = await self._acall_api([text])
+        return results[0]
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
-        return self._get_query_embedding(query)
+        return await self._aget_text_embedding(query)
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        return self._get_text_embeddings(texts)
+        if not texts:
+            return []
+        return await self._acall_api(texts)
 
     def close(self) -> None:
         self._client.close()

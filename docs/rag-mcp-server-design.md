@@ -46,7 +46,9 @@ RAG MCP Server
 
 **检索**：Agent → rag_search → Hybrid Search (Dense + Sparse) → RRF 融合 → 可选 Rerank → 返回结果
 
-**索引**：rag_index / 文件变更 → DocumentLoader → Splitter → Embedding → ChromaDB
+**索引**：rag_index / 文件变更 → DocumentLoader → Splitter → Embedding（异步 HTTP） → ChromaDB
+
+整个索引链路现已完全异步化：Embedding HTTP 调用使用 `httpx.AsyncClient`，通过 `VectorStoreIndex.ainsert_nodes()` → `_aget_text_embeddings()` → `AsyncClient.post()` 路径，不阻塞 asyncio 事件循环。Watcher 触发的索引通过 `asyncio.run()` 在 watchdog 线程中执行。
 
 ## 三、组件职责
 
@@ -67,7 +69,7 @@ RAG MCP Server
 | 工具 | 参数 | 返回 | 描述 |
 |------|------|------|------|
 | `rag_search` | `query`, `top_k` | 文档片段列表 | Hybrid Search，RRF 融合 |
-| `rag_index` | `paths`, `force` | 索引片段数 | 加载文档 → 分割 → 向量化 → 存储 |
+| `rag_index` | `paths` | 索引片段数 | 加载文档 → 分割 → 向量化 → 存储（完全异步，不阻塞事件循环） |
 | `rag_status` | - | 索引状态 | 文件数、片段数、存储路径 |
 | `rag_watch` | `paths`, `enabled` | 监控状态 | 启用/禁用文件变更监控 |
 
@@ -142,3 +144,4 @@ RAG MCP Server 作为独立 Python 包（`rag-mcp-server/`），通过 laffybot 
 - `laffybot/agent/tools/mcp/manager.py` — MCP 服务器管理
 - `laffybot/session/mcp_server_store.py` — MCP 配置持久化
 - `docs/archive/rag-mcp-server-design-2026-05-21.md` — 原始设计计划
+- `docs/archive/rag-mcp-server-async-2026-05-21.md` — 异步化改造实施记录

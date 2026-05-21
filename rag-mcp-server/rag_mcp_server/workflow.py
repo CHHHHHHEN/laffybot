@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,6 @@ RAG_INDEX_DESCRIPTION = """
 
 参数：
 - paths: 要索引的文档目录路径列表
-- force: 是否强制重新索引已存在的文档
 
 返回：成功索引的文档片段数量
 """
@@ -163,7 +163,7 @@ class RAGEngine:
 
         return results
 
-    def _index_dir(self, path: str) -> int:
+    async def _aindex_dir(self, path: str) -> int:
         from llama_index.core import VectorStoreIndex
         from llama_index.core.node_parser import MarkdownNodeParser
         from llama_index.readers.file import SimpleDirectoryReader
@@ -183,14 +183,13 @@ class RAGEngine:
         nodes = parser.get_nodes_from_documents(documents)
 
         if self._index is None:
-            self._index = VectorStoreIndex(
-                nodes=nodes,
-                embed_model=self._embed_model,
+            self._index = VectorStoreIndex.from_vector_store(
                 vector_store=self._vector_store,
-                show_progress=False,
+                embed_model=self._embed_model,
             )
+            await self._index.ainsert_nodes(nodes)
         else:
-            self._index.insert_nodes(nodes)
+            await self._index.ainsert_nodes(nodes)
 
         for node in nodes:
             source = node.metadata.get("file_path", "")
@@ -202,10 +201,10 @@ class RAGEngine:
 
         return len(nodes)
 
-    def index(self, paths: list[str], force: bool = False) -> int:
+    async def aindex(self, paths: list[str]) -> int:
         total = 0
         for p in paths:
-            total += self._index_dir(p)
+            total += await self._aindex_dir(p)
         return total
 
     def get_status(self) -> dict[str, Any]:
@@ -232,7 +231,7 @@ class RAGEngine:
     def _on_file_created(self, path: str) -> None:
         self._logger.info("[watcher] triggering reindex: %s", path)
         try:
-            self._index_dir(str(Path(path).parent))
+            asyncio.run(self._aindex_dir(str(Path(path).parent)))
         except Exception as exc:
             self._logger.error("[watcher] reindex failed: %s", exc)
 
@@ -241,7 +240,7 @@ class RAGEngine:
         if self._ingestion.has_changed(path):
             self._logger.info("[watcher] triggering reindex: %s", path)
             try:
-                self._index_dir(str(parent))
+                asyncio.run(self._aindex_dir(str(parent)))
             except Exception as exc:
                 self._logger.error("[watcher] reindex failed: %s", exc)
         else:
@@ -286,15 +285,15 @@ def create_mcp_server(
             raise
 
     @mcp.tool(description=RAG_INDEX_DESCRIPTION)  # type: ignore[untyped-decorator]
-    async def rag_index(paths: list[str], force: bool = False) -> int:
+    async def rag_index(paths: list[str]) -> int:
         logger = get_logger("rag_mcp_server")
-        logger.info("rag_index started: paths=%s, force=%s", paths, force)
+        logger.info("rag_index started: paths=%s", paths)
 
         if not paths:
             return 0
 
         try:
-            count = engine.index(paths, force=force)
+            count = await engine.aindex(paths)
             logger.info("rag_index completed: indexed=%d", count)
             return count
         except Exception as exc:
