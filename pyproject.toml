@@ -49,6 +49,11 @@ dev = [
     "types-psutil",
 ]
 
+[dependency-groups]
+dev = [
+    "respx>=0.23.1",
+]
+
 [[tool.uv.index]]
 url = "https://mirrors.ustc.edu.cn/pypi/simple"
 default = true

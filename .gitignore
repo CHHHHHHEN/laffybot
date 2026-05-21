@@ -30,3 +30,4 @@ ui/src-tauri/target/
 # ide files
 .github
 .opencode
+mcp_stdio_err.log

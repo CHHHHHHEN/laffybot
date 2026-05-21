@@ -138,7 +138,10 @@ class FileStates:
             # Content identical despite mtime change (e.g. touch) - mark as not dedupable to force full read next time
             entry.can_dedup = False
             return True
-        # mtime unchanged - content must be identical
+        # mtime unchanged - still check hash to catch rapid modifications within same tick
+        if entry.content_hash and _hash_file(p) != entry.content_hash:
+            entry.can_dedup = False
+            return False
         return True
 
     def get(self, path: str | Path) -> ReadState | None:
