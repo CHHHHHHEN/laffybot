@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import signal
 import subprocess
@@ -38,15 +39,16 @@ def run_command(
 ) -> subprocess.Popen[Any]:
     full_env = None
     if env:
-        full_env = dict(subprocess.os.environ)
+        full_env = dict(os.environ)
         full_env.update(env)
 
     if get_platform() == "windows":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         return subprocess.Popen(
             cmd,
             cwd=cwd,
             env=full_env,
+            shell=True,
             creationflags=creationflags,
         )
     else:
@@ -94,8 +96,6 @@ def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
             stderr=subprocess.DEVNULL,
         )
     else:
-        import os
-
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, OSError):
