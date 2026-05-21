@@ -9,7 +9,10 @@ wheels/
 
 # Virtual environments
 .venv
+rag-mcp-server/.venv/
 
+# rag-mcp-server
+rag-vectors/
 
 # db
 laffybot.db

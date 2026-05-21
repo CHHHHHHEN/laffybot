@@ -38,6 +38,8 @@ dev = [
     "ruff",
     "aiohttp",
     "mypy",
+    "psutil",
+    "types-psutil",
 ]
 
 [[tool.uv.index]]

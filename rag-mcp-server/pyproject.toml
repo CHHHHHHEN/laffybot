@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-mcp-server"
+version = "0.1.0"
+description = "RAG MCP Server for laffybot — hybrid search over project documents"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=0.1.0",
+    "llama-index-core>=0.10",
+    "llama-index-readers-file>=0.1",
+    "llama-index-embeddings-openai>=0.1",
+    "llama-index-vector-stores-chroma>=0.1",
+    "llama-index-retrievers-bm25>=0.1",
+    "chromadb>=0.4",
+    "watchdog>=3.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+rag-mcp-server = "rag_mcp_server.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["rag_mcp_server*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "types-pyyaml>=6.0.12.20260518",
+]

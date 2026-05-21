@@ -9,6 +9,7 @@ import platform
 import signal
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from urllib.parse import urljoin
 
 import httpx
 import httpx_sse
@@ -28,9 +29,10 @@ class Transport(ABC):
 
     async def _call_on_disconnect(self) -> None:
         """Safely invoke the on_disconnect callback if set."""
-        if self.on_disconnect is not None:
+        cb, self.on_disconnect = self.on_disconnect, None
+        if cb is not None:
             try:
-                await self.on_disconnect()
+                await cb()
             except Exception as exc:
                 logger.error("Disconnect callback failed: {}", exc)
 
@@ -198,17 +200,27 @@ class SseTransport(Transport):
         self._lines: asyncio.Queue[str | None] = asyncio.Queue()
         self._connected = False
         self._read_task: asyncio.Task[None] | None = None
+        self._endpoint_event = asyncio.Event()
 
     async def connect(self) -> None:
         self._client = httpx.AsyncClient(timeout=self._http_timeout)
         merged_headers = {**self._headers, "Accept": "text/event-stream"}
-        self._response = await self._client.get(self._url, headers=merged_headers)
+        request = self._client.build_request("GET", self._url, headers=merged_headers)
+        self._response = await self._client.send(request, stream=True)
         if self._response.status_code >= 400:
             raise TransportError(
                 f"SSE connection failed: HTTP {self._response.status_code} for GET {self._url}"
             )
         self._read_task = asyncio.create_task(self._read_sse())
         self._connected = True
+        try:
+            await asyncio.wait_for(
+                self._endpoint_event.wait(), timeout=self._http_timeout
+            )
+        except asyncio.TimeoutError:
+            raise TransportError(
+                "SSE connection timed out: no endpoint event received from server"
+            )
 
     async def send(self, message: str) -> None:
         if not self._connected or self._client is None:
@@ -276,7 +288,9 @@ class SseTransport(Transport):
         try:
             async for sse in httpx_sse.EventSource(self._response).aiter_sse():  # type: ignore[arg-type]
                 if sse.event == "endpoint":
-                    self._post_url = sse.data.strip()
+                    endpoint = sse.data.strip()
+                    self._post_url = endpoint if endpoint.startswith(("http://", "https://")) else urljoin(self._url, endpoint)
+                    self._endpoint_event.set()
                 elif sse.event in ("message", "jsonrpc"):
                     try:
                         json.loads(sse.data)
