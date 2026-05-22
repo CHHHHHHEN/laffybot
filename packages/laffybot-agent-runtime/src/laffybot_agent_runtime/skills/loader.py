@@ -178,6 +178,9 @@ class SkillsLoader:
                 return match.group(2).strip()
             return content.strip()
         except Exception:
+            logger.warning(
+                "Failed to read skill content from path={}", path, exc_info=True
+            )
             return None
 
     @staticmethod

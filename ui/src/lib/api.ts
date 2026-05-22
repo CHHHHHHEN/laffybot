@@ -213,7 +213,7 @@ export async function connectSseStream(
             }
           } catch {
             consecutiveGuardFailures++
-            console.warn('[connectSseStream] Malformed JSON in SSE data')
+            console.warn('[connectSseStream] Malformed JSON in SSE data, data=', data)
           }
         }
 
@@ -395,6 +395,28 @@ export function testProvider(id: string) {
   return apiRequest<TestResultResponse>(`/api/v1/providers/${id}/test`, {
     method: 'POST',
   })
+}
+
+/* ---- Error Log APIs ---- */
+
+export interface ErrorLogRecord {
+  timestamp: string
+  level: string
+  source: string
+  message: string
+  session_id?: string
+  request_id?: string
+  error_code?: string
+  traceback?: string
+}
+
+export interface ErrorLogListResponse {
+  errors: ErrorLogRecord[]
+  total: number
+}
+
+export function listErrorLogs(limit = 20) {
+  return apiRequest<ErrorLogListResponse>(`/api/v1/logs/errors?limit=${limit}`)
 }
 
 export interface DefaultSessionModelResponse {
@@ -816,7 +838,12 @@ export interface SseEvent {
   stop_reason?: string
   usage?: { prompt_tokens: number; completion_tokens: number }
   tools_used?: string[]
-  error?: { code: string; message: string; details?: Record<string, unknown> }
+  error_type?: string
+  message?: string
+  error_code?: string
+  recoverable?: boolean
+  details?: Record<string, unknown>
+  error?: { type: string; message: string; error_code: string; recoverable?: boolean; details?: Record<string, unknown> }
   reason?: string
   timestamp?: string
 }

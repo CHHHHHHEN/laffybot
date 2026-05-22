@@ -111,8 +111,12 @@ class SSEEvent:
             if self.iteration is not None:
                 result["iteration"] = self.iteration
 
-        elif self.type == "error":
-            result["error"] = self.error
+        elif self.type == "error" and self.error is not None:
+            result["error_type"] = self.error.get("type")
+            result["message"] = self.error.get("message", "")
+            result["error_code"] = self.error.get("error_code", "")
+            result["recoverable"] = self.error.get("recoverable", False)
+            result["details"] = self.error.get("details")
 
         elif self.type == "cancelled":
             result["reason"] = self.reason
@@ -130,10 +134,11 @@ class SSEEvent:
         """Serialize event to SSE format.
 
         Returns:
-            SSE-formatted string: "event: message\\ndata: <json>\\n\\n"
+            SSE-formatted string: "event: <event_type>\ndata: <json>\n\n"
         """
         data = json.dumps(self.to_dict(), ensure_ascii=False)
-        return f"event: message\ndata: {data}\n\n"
+        event_type = "error" if self.type == "error" else "message"
+        return f"event: {event_type}\ndata: {data}\n\n"
 
 
 # Factory functions for creating events
@@ -208,11 +213,24 @@ def event_error(
     code: str,
     message: str,
     details: dict[str, Any] | None = None,
+    *,
+    error_type: str = "internal_error",
+    recoverable: bool = False,
 ) -> SSEEvent:
-    """Create an error event."""
-    error_obj: dict[str, Any] = {"code": code, "message": message}
-    if details is not None:
-        error_obj["details"] = details
+    """Create an error event following ARCHITECTURE.md format.
+
+    The SSE event type is always 'error'. The data payload uses the
+    ARCHITECTURE.md format:
+      { "type": str, "message": str, "error_code": str,
+        "recoverable": bool, "details": object|null }
+    """
+    error_obj: dict[str, Any] = {
+        "type": error_type,
+        "message": message,
+        "error_code": code,
+        "recoverable": recoverable,
+        "details": details,
+    }
     return SSEEvent(type="error", error=error_obj)
 
 

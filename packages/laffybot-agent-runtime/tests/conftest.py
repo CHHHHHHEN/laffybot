@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-from laffybot_agent_runtime.config import ContextConfig
 from laffybot_agent_runtime.providers.base import BaseProvider
 from laffybot_agent_runtime.providers.config import ProviderConfig
 from laffybot_agent_runtime.providers.types import (
@@ -246,11 +245,6 @@ def tool_registry(mock_tool: _MockTool) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(mock_tool)
     return registry
-
-
-@pytest.fixture
-def context_config() -> ContextConfig:
-    return ContextConfig()
 
 
 @pytest.fixture

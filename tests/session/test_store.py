@@ -4,15 +4,18 @@ import uuid
 
 import pytest
 
-from laffybot.session.models import SessionInfo
-from laffybot.session.store import SQLiteStore
+from laffybot.db.manager import DatabaseManager
+from laffybot.db.session_store import SQLiteStore
+from laffybot.service.errors import SessionNotFoundError, SessionStateError
+from laffybot.service.models import SessionInfo
 
 
 @pytest.fixture
 async def store() -> SQLiteStore:
-    s = SQLiteStore(":memory:")
-    # Force initialization
-    await s._ensure_db()
+    db_manager = DatabaseManager(":memory:")
+    s = SQLiteStore(db_manager)
+    await db_manager.connect()
+    await s.run_migrations()
     return s
 
 
@@ -45,16 +48,12 @@ class TestSessionCRUD:
         assert session.session_id == session_id
 
     async def test_get_session_not_found(self, store: SQLiteStore) -> None:
-        from laffybot.session.errors import SessionNotFoundError
-
         with pytest.raises(SessionNotFoundError):
             await store.get_session("nonexistent")
 
     async def test_delete_session(self, store: SQLiteStore, session_id: str) -> None:
         await _create_session(store, session_id)
         await store.delete_session(session_id)
-        from laffybot.session.errors import SessionNotFoundError
-
         with pytest.raises(SessionNotFoundError):
             await store.get_session(session_id)
 
@@ -88,11 +87,8 @@ class TestSessionStatus:
     async def test_update_status_optimistic_lock_fails(
         self, store: SQLiteStore, session_id: str
     ) -> None:
-        from laffybot.session.errors import SessionStateError
-
         await _create_session(store, session_id)
         await store.update_session_status(session_id, "busy", expected_status="idle")
-        # Try to transition from "idle" when it's actually "busy"
         with pytest.raises(SessionStateError):
             await store.update_session_status(
                 session_id, "idle", expected_status="idle"
@@ -171,9 +167,7 @@ class TestTitleAndArchive:
         self, store: SQLiteStore, session_id: str
     ) -> None:
         await _create_session(store, session_id)
-        # Send a message to bump user_message_count
         await store.save_message(session_id, "user", "Hello")
-        # Try to update with wrong expected count
         success = await store.update_session_title(
             session_id,
             "Title",

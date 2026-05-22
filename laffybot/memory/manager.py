@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
-from laffybot_agent_runtime.context.tokens import ApproximateTokenCounter
 from loguru import logger
 
+from laffybot.db.consolidated_store import ConsolidatedMemoryStore
+from laffybot.db.manager import DatabaseManager
+from laffybot.db.memory_store import MemoryStore
 from laffybot.memory.config import MemoryConfig
-from laffybot.memory.consolidated_store import ConsolidatedMemoryStore
-from laffybot.memory.store import MemoryStore, SQLiteMemoryStore
+from laffybot.service.protocols import MemoryManager as MemoryManagerProtocol
+from laffybot.utils.token_counter import ApproximateTokenCounter
 
 if TYPE_CHECKING:
     from laffybot_agent_runtime.providers.base import BaseProvider
@@ -18,19 +20,19 @@ if TYPE_CHECKING:
     from laffybot.memory.consolidator import MemoryConsolidator
 
 
-class MemoryManager:
+class MemoryManager(MemoryManagerProtocol):
     """Owns memory lifecycle: initialisation, extraction, and resource management."""
 
     def __init__(
         self,
         config: MemoryConfig,
         store: MemoryStore | None = None,
-        db_path: str | None = None,
+        db_manager: DatabaseManager | None = None,
         consolidator: MemoryConsolidator | None = None,
     ) -> None:
         self._config = config
         self._store: MemoryStore | None = store
-        self._db_path = db_path
+        self._db_manager = db_manager
         self._consolidated_store: ConsolidatedMemoryStore | None = None
         self._consolidator: MemoryConsolidator | None = consolidator
 
@@ -51,11 +53,13 @@ class MemoryManager:
         return self._consolidated_store
 
     async def initialize(self) -> None:
-        if self._store is None and self._db_path is not None:
-            self._store = SQLiteMemoryStore(self._db_path)
+        if self._store is None and self._db_manager is not None:
+            from laffybot.db.memory_store import SQLiteMemoryStore
 
-        if self._db_path is not None:
-            self._consolidated_store = ConsolidatedMemoryStore(self._db_path)
+            self._store = SQLiteMemoryStore(self._db_manager)
+
+        if self._db_manager is not None:
+            self._consolidated_store = ConsolidatedMemoryStore(self._db_manager)
 
         logger.info(
             "Memory system initialized: enabled={}",
@@ -69,11 +73,6 @@ class MemoryManager:
         provider: BaseProvider,
         model: str,
     ) -> str | None:
-        """Coordinate memory extraction from session messages.
-
-        Returns memory_id if persisted, None if skipped/no-op.
-        After saving, triggers consolidation asynchronously.
-        """
         log = logger.bind(session_id=session_id)
 
         if self._store is None:
@@ -103,7 +102,19 @@ class MemoryManager:
         log.info("Memory extracted: session_id={}, memory_id={}", session_id, memory_id)
 
         if self._consolidator is not None:
-            asyncio.create_task(self._consolidator.try_consolidate())
+
+            def _consolidate_done(t: asyncio.Task[bool]) -> None:
+                exc = t.exception()
+                if exc is not None and not isinstance(
+                    exc, asyncio.CancelledError
+                ):
+                    logger.error(
+                        "Consolidation background task failed: {}",
+                        exc,
+                    )
+
+            task = asyncio.create_task(self._consolidator.try_consolidate())
+            task.add_done_callback(_consolidate_done)
 
         return memory_id
 

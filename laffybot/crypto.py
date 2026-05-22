@@ -6,8 +6,16 @@ import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
-from laffybot_agent_runtime.providers.errors import ProviderConfigError
 from loguru import logger
+
+
+class CryptoError(Exception):
+    """Cryptographic operation failed."""
+
+
+class CryptoConfigError(CryptoError):
+    """Invalid encryption configuration."""
+
 
 ENCRYPTION_KEY_ENV_VAR = "LAFFYBOT_ENCRYPTION_KEY"
 ENV_FILE_NAME = ".env"
@@ -76,30 +84,30 @@ def _get_fernet() -> Fernet:
         return Fernet(key.encode() if isinstance(key, str) else key)
     except Exception as exc:
         logger.error("Invalid encryption key format: {}", exc)
-        raise ProviderConfigError(f"Invalid encryption key format: {exc}") from exc
+        raise CryptoConfigError(f"Invalid encryption key format: {exc}") from exc
 
 
 def encrypt_api_key(plaintext: str) -> str:
     if not plaintext:
-        raise ProviderConfigError("Cannot encrypt empty API key")
+        raise CryptoConfigError("Cannot encrypt empty API key")
     fernet = _get_fernet()
     return fernet.encrypt(plaintext.encode()).decode()
 
 
 def decrypt_api_key(ciphertext: str) -> str:
     if not ciphertext:
-        raise ProviderConfigError("Cannot decrypt empty ciphertext")
+        raise CryptoConfigError("Cannot decrypt empty ciphertext")
     fernet = _get_fernet()
     try:
         return fernet.decrypt(ciphertext.encode()).decode()
     except InvalidToken as exc:
         logger.error("API key decryption failed: invalid token or key")
-        raise ProviderConfigError(
+        raise CryptoConfigError(
             "API key decryption failed: invalid token or key"
         ) from exc
     except Exception as exc:
         logger.error("API key decryption failed: {}", exc)
-        raise ProviderConfigError(f"API key decryption failed: {exc}") from exc
+        raise CryptoConfigError(f"API key decryption failed: {exc}") from exc
 
 
 def validate_encryption_key() -> None:
@@ -107,4 +115,4 @@ def validate_encryption_key() -> None:
     try:
         Fernet(key.encode() if isinstance(key, str) else key)
     except Exception as exc:
-        raise ProviderConfigError(f"Invalid encryption key format: {exc}") from exc
+        raise CryptoConfigError(f"Invalid encryption key format: {exc}") from exc

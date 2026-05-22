@@ -4,27 +4,29 @@ from collections import namedtuple
 from unittest.mock import AsyncMock
 
 import pytest
-from laffybot_agent_runtime.config import ContextConfig
-from laffybot_agent_runtime.context.builder import SimpleContextBuilder
 from laffybot_agent_runtime.tools.registry import ToolRegistry
 
-from laffybot.session.errors import SessionNotBusyError
-from laffybot.session.manager import SessionManager
-from laffybot.session.store import SQLiteStore
+from laffybot.db.manager import DatabaseManager
+from laffybot.db.session_store import SQLiteStore
+from laffybot.service.context.builder import SimpleContextBuilder
+from laffybot.service.context.types import ContextConfig
+from laffybot.service.errors import SessionNotBusyError
+from laffybot.service.session_manager import DefaultSessionManager
 
 _FakeModel = namedtuple("FakeModel", ["name"])
 
 
 @pytest.fixture
 async def store() -> SQLiteStore:
-    s = SQLiteStore(":memory:")
-    await s._ensure_db()
-    yield s
-    await s.close()
+    db_manager = DatabaseManager(":memory:")
+    s = SQLiteStore(db_manager)
+    await db_manager.connect()
+    await s.run_migrations()
+    return s
 
 
 @pytest.fixture
-async def manager(store: SQLiteStore) -> SessionManager:
+async def manager(store: SQLiteStore) -> DefaultSessionManager:
     mock_app_settings = AsyncMock()
     mock_app_settings.get_default_session_config.return_value = None
 
@@ -34,60 +36,42 @@ async def manager(store: SQLiteStore) -> SessionManager:
 
     context_builder = SimpleContextBuilder(ContextConfig())
 
-    m = SessionManager(
+    m = DefaultSessionManager(
         store=store,
         provider_store=mock_provider_store,
         app_setting_store=mock_app_settings,
         tool_registry=ToolRegistry(),
         context_builder=context_builder,
-        provider_factory=store,
+        provider_factory=mock_provider_store,
     )
     await m.start()
     yield m
     await m.shutdown()
 
 
-class TestSessionManagerLockAndToken:
-    async def test_lock_per_session(self, manager: SessionManager) -> None:
-        lock1 = manager._lock_for("sess-1")
-        lock2 = manager._lock_for("sess-1")
-        assert lock1 is lock2
-
-    async def test_lock_isolation(self, manager: SessionManager) -> None:
-        lock_a = manager._lock_for("sess-a")
-        lock_b = manager._lock_for("sess-b")
-        assert lock_a is not lock_b
-
-    async def test_cancel_on_idle_raises(self, manager: SessionManager) -> None:
+class TestSessionManagerCore:
+    async def test_cancel_on_idle_raises(self, manager: DefaultSessionManager) -> None:
         session = await manager.create_session(
             provider_id="test", model_name="test-model"
         )
         with pytest.raises(SessionNotBusyError):
             await manager.cancel_request(session.session_id)
 
-    async def test_create_session_idle_status(self, manager: SessionManager) -> None:
+    async def test_create_session_idle_status(
+        self, manager: DefaultSessionManager
+    ) -> None:
         session = await manager.create_session(
             provider_id="test", model_name="test-model"
         )
         assert session.status == "idle"
 
-    async def test_active_tokens_empty_initially(self, manager: SessionManager) -> None:
-        assert len(manager._active_tokens) == 0
-
-    async def test_locks_empty_initially(self, manager: SessionManager) -> None:
-        assert len(manager._locks) == 0
-
     async def test_shutdown_clears_background_tasks(
-        self, manager: SessionManager
+        self, manager: DefaultSessionManager
     ) -> None:
         await manager.shutdown()
         assert manager._watchdog_task is None
 
-    async def test_watchdog_configured_defaults(self, manager: SessionManager) -> None:
-        assert manager._session_timeout_s == 600
-        assert manager._watchdog_interval_s == 60
-
-    async def test_get_session_info(self, manager: SessionManager) -> None:
+    async def test_get_session_info(self, manager: DefaultSessionManager) -> None:
         session = await manager.create_session(
             provider_id="test", model_name="test-model"
         )

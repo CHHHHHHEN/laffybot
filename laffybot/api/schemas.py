@@ -120,6 +120,7 @@ class ProviderCreateRequest(BaseModel):
     base_url: str
     api_key: str
     extra_headers: dict[str, str] = Field(default_factory=dict)
+    extra_body: dict[str, Any] | None = None
 
 
 class ProviderUpdateRequest(BaseModel):
@@ -127,6 +128,7 @@ class ProviderUpdateRequest(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_headers: dict[str, str] | None = None
+    extra_body: dict[str, Any] | None = None
 
 
 class ProviderResponse(BaseModel):
@@ -280,3 +282,22 @@ class MCPServerResponse(BaseModel):
 class MCPServerTestResponse(BaseModel):
     success: bool
     message: str
+
+
+# ── Error Log Schemas ──────────────────────────────────────────────────────
+
+
+class ErrorLogRecord(BaseModel):
+    timestamp: str
+    level: str
+    source: str
+    message: str
+    session_id: str | None = None
+    request_id: str | None = None
+    error_code: str | None = None
+    traceback: str | None = None
+
+
+class ErrorLogListResponse(BaseModel):
+    errors: list[ErrorLogRecord]
+    total: int

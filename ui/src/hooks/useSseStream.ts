@@ -120,12 +120,20 @@ export function useSseStream(
           break
         case 'error':
           store.archiveCurrentIteration(currentSessionId)
-          store.updateSessionLastMessage(currentSessionId, { isStreaming: false, isError: true })
+          store.updateSessionLastMessage(currentSessionId, {
+            isStreaming: false,
+            isError: true,
+            content: event.message ?? event.error?.message ?? '流处理出错',
+          })
           store.setSessionConnectionStatus(currentSessionId, 'error')
           store.stopStreaming(currentSessionId)
           store.setSessionRequestId(currentSessionId, null)
           updateSessionStatus(currentSessionId, 'error')
-          setError(event.error?.message ?? 'Stream error')
+          setError(event.message ?? event.error?.message ?? 'Stream error')
+          toast.error(event.message ?? event.error?.message ?? '流处理出错', {
+            duration: 10_000,
+            description: event.error_code ? `错误代码: ${event.error_code}` : undefined,
+          })
           break
         case 'cancelled':
           store.archiveCurrentIteration(currentSessionId)
@@ -204,10 +212,13 @@ export function useSseStream(
           (event) => handleSseEvent(event, currentSessionId),
           abortController.signal
         )
-      } catch {
+      } catch (err) {
         if (abortController.signal.aborted) return
-        const message = '发送消息失败，请重试'
-        toast.error(message)
+        const errMsg = err instanceof Error ? err.message : '发送消息失败，请重试'
+        toast.error(errMsg, {
+          duration: 8_000,
+          description: err instanceof Error ? err.message : undefined,
+        })
         store.archiveCurrentIteration(currentSessionId)
         store.setSessionConnectionStatus(currentSessionId, 'error')
         store.stopStreaming(currentSessionId)

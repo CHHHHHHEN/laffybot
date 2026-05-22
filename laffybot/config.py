@@ -32,6 +32,20 @@ class ApiConfig(BaseSettings):
         default=False,
         description="Allow credentialed CORS requests.",
     )
+    log_dir: str = Field(
+        default="logs",
+        description="Directory for log files (relative or absolute). Auto-created.",
+    )
+    log_max_bytes: int = Field(
+        default=10_485_760,
+        ge=1_048_576,
+        description="Max bytes per log file before rotation (default 10MB).",
+    )
+    log_backup_count: int = Field(
+        default=5,
+        ge=0,
+        description="Number of rotated log files to keep.",
+    )
     max_active_sessions: int = Field(
         default=3,
         ge=1,

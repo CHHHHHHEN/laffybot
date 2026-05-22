@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from laffybot_agent_runtime.context.tokens import ApproximateTokenCounter
 from laffybot_agent_runtime.providers.types import ErrorLLMResponse
 from loguru import logger
 
 from laffybot.memory.prompts import EXTRACT_MEMORY_PROMPT
+from laffybot.utils.token_counter import ApproximateTokenCounter
 
 if TYPE_CHECKING:
     from laffybot_agent_runtime.providers.base import BaseProvider
@@ -64,6 +64,7 @@ class MemoryExtractor:
                 return None
 
             if not response.content:
+                logger.debug("Memory extraction skipped: empty LLM response")
                 return None
 
             result = response.content.strip()

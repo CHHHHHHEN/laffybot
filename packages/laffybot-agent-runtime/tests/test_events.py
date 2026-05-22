@@ -162,17 +162,39 @@ class TestSSEEventToDict:
     def test_error_with_details(self) -> None:
         e = SSEEvent(
             type="error",
-            error={"code": "LLM_ERROR", "message": "fail", "details": {"status": 429}},
+            error={
+                "type": "provider_error",
+                "error_code": "LLM_ERROR",
+                "message": "fail",
+                "recoverable": True,
+                "details": {"status": 429},
+            },
         )
         d = e.to_dict()
-        assert d["error"]["code"] == "LLM_ERROR"
-        assert d["error"]["details"]["status"] == 429
+        assert d["type"] == "error"
+        assert d["error_type"] == "provider_error"
+        assert d["error_code"] == "LLM_ERROR"
+        assert d["message"] == "fail"
+        assert d["recoverable"] is True
+        assert d["details"] == {"status": 429}
 
     def test_error_without_details(self) -> None:
-        e = SSEEvent(type="error", error={"code": "TOOL_ERROR", "message": "fail"})
+        e = SSEEvent(
+            type="error",
+            error={
+                "type": "internal_error",
+                "error_code": "TOOL_ERROR",
+                "message": "fail",
+                "recoverable": False,
+            },
+        )
         d = e.to_dict()
-        assert d["error"]["code"] == "TOOL_ERROR"
-        assert "details" not in d["error"]
+        assert d["type"] == "error"
+        assert d["error_type"] == "internal_error"
+        assert d["error_code"] == "TOOL_ERROR"
+        assert d["message"] == "fail"
+        assert d["recoverable"] is False
+        assert d["details"] is None
 
     def test_cancelled_with_reason(self) -> None:
         e = SSEEvent(type="cancelled", reason="user cancelled")
@@ -226,18 +248,23 @@ class TestToSSE:
         assert "\\u" not in sse
         assert "你好" in sse
 
-    def test_nested_dict(self) -> None:
+    def test_error_to_sse_event_type(self) -> None:
         e = SSEEvent(
             type="error",
             error={
-                "code": "ERR",
+                "type": "internal_error",
+                "error_code": "ERR",
                 "message": "fail",
+                "recoverable": False,
                 "details": {"nested": {"key": "val"}},
             },
         )
         sse = e.to_sse()
-        parsed = json.loads(sse[len("event: message\ndata: ") :].rstrip("\n\n"))
-        assert parsed["error"]["details"]["nested"]["key"] == "val"
+        assert sse.startswith("event: error\ndata: ")
+        assert sse.endswith("\n\n")
+        parsed = json.loads(sse[len("event: error\ndata: ") :].rstrip("\n\n"))
+        assert parsed["error_type"] == "internal_error"
+        assert parsed["details"]["nested"]["key"] == "val"
 
 
 class TestFactoryFunctions:
@@ -302,13 +329,21 @@ class TestFactoryFunctions:
 
     def test_event_error(self) -> None:
         e = event_error("LLM_ERROR", "fail")
-        assert e.error == {"code": "LLM_ERROR", "message": "fail"}
+        assert e.error == {
+            "type": "internal_error",
+            "message": "fail",
+            "error_code": "LLM_ERROR",
+            "recoverable": False,
+            "details": None,
+        }
 
     def test_event_error_with_details(self) -> None:
         e = event_error("LLM_ERROR", "fail", {"status": 429})
         assert e.error == {
-            "code": "LLM_ERROR",
+            "type": "internal_error",
             "message": "fail",
+            "error_code": "LLM_ERROR",
+            "recoverable": False,
             "details": {"status": 429},
         }
 

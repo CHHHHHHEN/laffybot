@@ -44,7 +44,7 @@
 
 ### Store 接口变更
 
-`SessionStore`（`laffybot/session/store.py`）：
+`SessionStore`（`laffybot/db/session_store.py`）：
 
 - `create_session()` 签名：参数 `model: str` 改为 `provider_id: str, model_name: str`
 - 新增 `update_session_model(session_id, provider_id, model_name, expected_status: SessionStatus | tuple[SessionStatus, ...] | None = ("idle", "error")) → SessionInfo`：更新绑定的 provider 和 model。内部通过 `expected_status` 做 SQL 层乐观锁（单值用 `WHERE status = ?`，多值用 `WHERE status IN (...?)`），默认接受 idle 或 error，仅拒绝 busy 状态。防止执行消息时被并发修改配置。
@@ -52,7 +52,7 @@
 
 ### AppSettingStore 新增
 
-新增独立的 `AppSettingStore`（`laffybot/session/app_setting_store.py`），负责管理全局键值对配置，与 provider/model 管理解耦。SQLite 实现拥有 `app_settings` 表的所有权，该表从 `ProviderStore` 的 schema 中移除。
+新增独立的 `AppSettingStore`（`laffybot/db/app_setting_store.py`），负责管理全局键值对配置，与 provider/model 管理解耦。SQLite 实现拥有 `app_settings` 表的所有权，该表从 `ProviderStore` 的 schema 中移除。
 
 提供类型化方法（而非通用 kv 接口），避免调用方自行处理 JSON 序列化/反序列化：
 
@@ -258,7 +258,7 @@ class SessionManager:
 
 ### 后端
 
-|laffybot/session/provider_store.py||
+|laffybot/db/provider_store.py||
 |--|--|
 | 移除 | `ActiveSelection` dataclass |
 | 移除 | 常量 `_ACTIVE_PROVIDER_KEY`、`_ACTIVE_MODEL_KEY` |
@@ -272,7 +272,7 @@ class SessionManager:
 |--|--|
 | 替换 | `SessionInfo.model: str` → `SessionInfo.provider_id: str` + `SessionInfo.model_name: str` |
 
-|laffybot/session/store.py||
+|laffybot/db/session_store.py||
 |--|--|
 | 修改 | `_SCHEMA_SQL`：sessions 表 `model TEXT NOT NULL` → `provider_id TEXT NOT NULL, model_name TEXT NOT NULL` |
 | 修改 | `create_session()` 参数：`model: str` → `provider_id: str, model_name: str` |

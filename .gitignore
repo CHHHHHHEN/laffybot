@@ -30,4 +30,8 @@ ui/src-tauri/target/
 # ide files
 .github
 .opencode
+.hermes
 mcp_stdio_err.log
+
+# Runtime logs
+logs/

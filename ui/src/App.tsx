@@ -8,6 +8,7 @@ import { AdvancedSettingsPage } from '@/pages/AdvancedSettingsPage'
 import { McpSettingsPage } from '@/pages/McpSettingsPage'
 import { MemoryManagePage } from '@/pages/MemoryManagePage'
 import { SkillSettingsPage } from '@/pages/SkillSettingsPage'
+import { ErrorLogPage } from '@/pages/ErrorLogPage'
 
 const router = createBrowserRouter([
   {
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
           { path: 'advanced', element: <AdvancedSettingsPage /> },
           { path: 'memories', element: <MemoryManagePage /> },
           { path: 'skills', element: <SkillSettingsPage /> },
+          { path: 'errors', element: <ErrorLogPage /> },
         ],
       },
     ],

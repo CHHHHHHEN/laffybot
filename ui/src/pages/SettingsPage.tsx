@@ -7,6 +7,7 @@ const tabs = [
   { to: '/settings/advanced', label: '高级设置' },
   { to: '/settings/memories', label: '记忆管理' },
   { to: '/settings/skills', label: 'SKILL 设置' },
+  { to: '/settings/errors', label: '错误日志' },
 ]
 
 export function SettingsPage() {
