@@ -3,7 +3,7 @@
 # Embedding Configuration
 # =============================================================================
 embedding_model: "text-embedding-v4"
-embedding_api_key: "sk-366bfa296ebb4dbab198cbc417018d29"
+embedding_api_key: ""  # Set via EMBEDDING_API_KEY env var; or put your key here
 embedding_api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 # =============================================================================

@@ -35,3 +35,6 @@ mcp_stdio_err.log
 
 # Runtime logs
 logs/
+
+# RAG MCP Server — deployment config (use settings.yaml.example + .env)
+packages/rag-mcp-server/config/settings.yaml

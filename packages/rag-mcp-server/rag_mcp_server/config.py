@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -79,5 +80,9 @@ def load_config(path: str | Path) -> RAGConfig:
         for k, v in watch_raw.items():
             if hasattr(config.watch, k):
                 setattr(config.watch, k, v)
+
+    # Environment variable overrides (take precedence over YAML)
+    if os.environ.get("EMBEDDING_API_KEY"):
+        config.embedding_api_key = os.environ["EMBEDDING_API_KEY"]
 
     return config
