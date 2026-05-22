@@ -143,9 +143,7 @@ def create_app(
 
                 def _mcp_start_done(t: asyncio.Task[object]) -> None:
                     exc = t.exception()
-                    if exc is not None and not isinstance(
-                        exc, asyncio.CancelledError
-                    ):
+                    if exc is not None and not isinstance(exc, asyncio.CancelledError):
                         logger.error("MCP server start failed: {}", exc)
 
                 mcp_task.add_done_callback(_mcp_start_done)

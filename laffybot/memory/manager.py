@@ -101,13 +101,27 @@ class MemoryManager(MemoryManagerProtocol):
         )
         log.info("Memory extracted: session_id={}, memory_id={}", session_id, memory_id)
 
+        if (
+            self._consolidator is None
+            and self._config.enabled
+            and self._consolidated_store is not None
+        ):
+            from laffybot.memory.consolidator import MemoryConsolidator
+
+            self._consolidator = MemoryConsolidator(
+                provider=provider,
+                model=model,
+                memory_store=self._store,
+                consolidated_store=self._consolidated_store,
+                trigger_count=self._config.consolidation_trigger_count,
+                max_source_memories=self._config.max_source_memories,
+            )
+
         if self._consolidator is not None:
 
             def _consolidate_done(t: asyncio.Task[bool]) -> None:
                 exc = t.exception()
-                if exc is not None and not isinstance(
-                    exc, asyncio.CancelledError
-                ):
+                if exc is not None and not isinstance(exc, asyncio.CancelledError):
                     logger.error(
                         "Consolidation background task failed: {}",
                         exc,

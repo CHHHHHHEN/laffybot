@@ -594,14 +594,9 @@ class DefaultSessionManager(SessionManager):
             self._active_tokens.pop(session_id, None)
             try:
                 await self._state.force_to_idle(session_id)
-                current = await self.store.get_session(session_id)
-                if current.status == "busy":
-                    await self.store.update_session_status(
-                        session_id,
-                        "idle",
-                        current_request_id=None,
-                        error_message="Session interrupted unexpectedly",
-                    )
+                await self.force_reset_stuck_busy(
+                    session_id, "Session interrupted unexpectedly"
+                )
             except Exception:
                 logger.exception("Failed to reset stuck busy session")
 

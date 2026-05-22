@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -270,4 +271,20 @@ class AsyncEventProcessor:
             )
 
     async def _do_auto_archive(self, session_id: str) -> None:
-        pass
+        try:
+            sessions, total = await self._store.list_sessions(
+                archived=False, limit=100, order_by_asc=True
+            )
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(days=30)
+
+            for session in sessions:
+                if session.updated_at < cutoff:
+                    await self._store.archive_session(session.session_id)
+                    logger.info(
+                        "Auto-archived idle session: session_id={}, title={}",
+                        session.session_id,
+                        session.title,
+                    )
+        except Exception as e:
+            logger.warning("Auto-archive scan failed: {}", str(e))
