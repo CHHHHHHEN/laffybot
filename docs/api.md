@@ -213,13 +213,13 @@ data: {"type": "done", "stop_reason": "completed", "usage": {"prompt_tokens": 15
 
 > **注意:** `reasoning` 事件由后端统一处理不同 LLM 提供商的思维链格式差异（如 DeepSeek 的 `reasoning_content` 字段），对外暴露统一的事件格式，客户端无需关心底层实现细节。
 
-> **当前代码注记：** `laffybot_agent_runtime/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，`/sessions/{session_id}/messages` SSE 路径已通过 `HeartbeatManager.wait_for_ping()` 接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
+> **当前代码注记：** `laffybot/agent_runtime/heartbeat.py` 已提供 `HeartbeatManager` 和 `ping` 事件定义，`/sessions/{session_id}/messages` SSE 路径已通过 `HeartbeatManager.wait_for_ping()` 接入自动心跳；`Last-Event-ID` 头也已被路由接收，但当前未用于事件重放。
 
 **实现说明：**
 
 > **当前实现状态**
 > 
-> 当前版本已实现核心流式链路，但心跳与断线重放仍是预留能力：
+> 当前版本已实现核心流式链路与心跳保活，断线重放仍为预留能力：
 > 
 > 1. **Phase 1 - 基础流式支持** ✅：
 >    - `AgentRunner.run_stream()` 方法已实现
@@ -660,7 +660,7 @@ event: message
 data: {"type": "content", "text": " world"}
 ```
 
-当前代码尚未实现基于 `Last-Event-ID` 的事件回放，因此断线续传属于设计预留能力，客户端需要按新的请求流程重新建立连接。
+当前代码已实现内存 ring buffer（`SSERingBuffer`，容量 100 条）和 `Last-Event-ID` 事件回放逻辑（`stream_session_events`），断连后客户端可在重连时通过 `Last-Event-ID` 请求缺失事件。ring buffer 未命中时会回查 Store，但当前仅缓存当次流的事件，超时后 buffer 被释放。
 
 ## 健康检查
 
