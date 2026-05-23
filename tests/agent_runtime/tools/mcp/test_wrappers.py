@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for MCP wrappers — name normalisation, schema, ToolFilter, tool classes."""
 
 from __future__ import annotations

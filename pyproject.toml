@@ -74,3 +74,12 @@ exclude = ["third-party/"]
 [[tool.mypy.overrides]]
 module = "tests.*"
 strict = false
+
+[[tool.mypy.overrides]]
+module = "pytest"
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+]

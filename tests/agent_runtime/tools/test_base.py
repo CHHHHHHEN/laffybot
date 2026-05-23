@@ -32,7 +32,7 @@ class TestAbstractBase:
                 return "No execute"
 
         with pytest.raises(TypeError, match="abstract.*execute"):
-            _NoExecute()
+            _NoExecute()  # type: ignore[abstract]
 
     def test_can_instantiate_with_all_abstract(self) -> None:
         class _FullTool(Tool):

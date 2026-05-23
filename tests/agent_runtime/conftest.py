@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Shared test fixtures for laffybot-agent-runtime."""
 
 from __future__ import annotations
@@ -215,7 +216,7 @@ class _MockTransport(Transport):
         item = self._responses.pop(0)
         if item is TransportError:
             raise TransportError("mock disconnection")
-        return item
+        return item  # type: ignore[return-value]
 
     async def close(self) -> None:
         self._closed = True

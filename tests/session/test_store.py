@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for SQLite session store."""
 
 import uuid

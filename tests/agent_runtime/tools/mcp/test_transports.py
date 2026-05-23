@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for MCP transports — Stdio, SSE, StreamableHttp."""
 
 from __future__ import annotations

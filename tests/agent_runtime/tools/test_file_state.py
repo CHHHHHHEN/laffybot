@@ -1,7 +1,9 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for FileStates and FileStateStore."""
 
 from __future__ import annotations
 
+import collections.abc
 from pathlib import Path
 
 import pytest
@@ -212,7 +214,7 @@ class TestModuleLevelFunctions:
     """Module-level backward-compat helper functions."""
 
     @pytest.fixture(autouse=True)
-    def _auto_cleanup(self) -> None:
+    def _auto_cleanup(self) -> collections.abc.Generator[None, None, None]:
         clear()
         yield
         clear()

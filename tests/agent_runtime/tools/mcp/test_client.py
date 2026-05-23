@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for McpClient — JSON-RPC protocol over mock transport."""
 
 from __future__ import annotations

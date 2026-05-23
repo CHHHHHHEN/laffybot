@@ -1,9 +1,11 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for filesystem tools: ReadFileTool, WriteFileTool, EditFileTool, ListDirTool."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -28,7 +30,7 @@ def _write_tool(tmp_path: Path) -> WriteFileTool:
     return WriteFileTool(workspace=tmp_path, allowed_dir=tmp_path)
 
 
-def _edit_tool(tmp_path: Path, file_states=None) -> EditFileTool:
+def _edit_tool(tmp_path: Path, file_states: Any = None) -> EditFileTool:
     return EditFileTool(
         workspace=tmp_path, allowed_dir=tmp_path, file_states=file_states
     )

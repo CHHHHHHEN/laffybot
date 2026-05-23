@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for ExecTool shell execution tool."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for OpenAIProvider — non-streaming, streaming, error handling, message sanitization."""
 
 from __future__ import annotations
@@ -292,6 +293,7 @@ class TestExtraBody:
             )
             import json
 
+            assert request_body is not None
             body = json.loads(request_body.content)
             assert body.get("custom") == "value"
 
@@ -328,6 +330,7 @@ class TestTemperatureSuppression:
             )
             import json
 
+            assert request_body is not None
             body = json.loads(request_body.content)
             assert "temperature" not in body
 
@@ -360,6 +363,7 @@ class TestTemperatureSuppression:
             )
             import json
 
+            assert request_body is not None
             body = json.loads(request_body.content)
             assert body.get("temperature") == 0.7
 
@@ -417,10 +421,10 @@ class TestStreamingIdleTimeout:
         provider = _provider()
 
         class _BlockingStream:
-            def __aiter__(self):
+            def __aiter__(self) -> _BlockingStream:
                 return self
 
-            async def __anext__(self):
+            async def __anext__(self) -> Any:
                 if not getattr(self, "_started", False):
                     self._started = True
                     return _stream_chunk("hi")

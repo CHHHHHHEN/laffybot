@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for AgentRunner and AgentRunSpec."""
 
 from __future__ import annotations

@@ -1,5 +1,7 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for SessionManager state machine transitions."""
 
+import collections.abc
 from collections import namedtuple
 from unittest.mock import AsyncMock
 
@@ -13,7 +15,7 @@ from laffybot.service.context.types import ContextConfig
 from laffybot.service.errors import SessionNotBusyError
 from laffybot.service.session_manager import DefaultSessionManager
 
-_FakeModel = namedtuple("FakeModel", ["name"])
+_FakeModel = namedtuple("_FakeModel", ["name"])
 
 
 @pytest.fixture
@@ -26,7 +28,9 @@ async def store() -> SQLiteStore:
 
 
 @pytest.fixture
-async def manager(store: SQLiteStore) -> DefaultSessionManager:
+async def manager(
+    store: SQLiteStore,
+) -> collections.abc.AsyncGenerator[DefaultSessionManager, None]:
     mock_app_settings = AsyncMock()
     mock_app_settings.get_default_session_config.return_value = None
 

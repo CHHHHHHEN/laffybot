@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for McpServerManager — lifecycle, startup, routing, shutdown."""
 
 from __future__ import annotations
@@ -148,7 +149,7 @@ class TestGetStatus:
 
 def _make_mock_transport(*, init: bool = False, tools: bool = False) -> Any:
     """Create a mock transport pre-configured with JSON-RPC responses."""
-    from conftest import _MockTransport
+    from tests.agent_runtime.conftest import _MockTransport
 
     t = _MockTransport(receive_timeout=5)
     if init:

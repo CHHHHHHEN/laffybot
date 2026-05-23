@@ -43,14 +43,14 @@ class HeartbeatManager:
         await task
     """
 
-    def __init__(self, interval_s: int | None = None):
+    def __init__(self, interval_s: float | None = None):
         """Initialize heartbeat manager.
 
         Args:
             interval_s: Heartbeat interval in seconds. If None, uses
                        LAFFYBOT_AGENT_RUNTIME_HEARTBEAT_INTERVAL_S env var or default (15s).
         """
-        self.interval_s = interval_s or _heartbeat_interval_s()
+        self.interval_s = _heartbeat_interval_s() if interval_s is None else interval_s
         self._reset_event = asyncio.Event()
         self._stop_event = asyncio.Event()
         self._reset_event.set()  # Start with reset to begin timer

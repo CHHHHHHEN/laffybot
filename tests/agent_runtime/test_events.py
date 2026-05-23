@@ -1,3 +1,4 @@
+# mypy: disable-error-code="untyped-decorator"
 """Tests for SSEEvent serialization and factory functions."""
 
 from __future__ import annotations
