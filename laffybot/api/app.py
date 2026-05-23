@@ -11,21 +11,21 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from laffybot_agent_runtime.providers.errors import ProviderError
-from laffybot_agent_runtime.tools.errors import ToolError
-from laffybot_agent_runtime.tools.filesystem import (
+from loguru import logger
+
+from laffybot import __version__
+from laffybot.agent_runtime.providers.errors import ProviderError
+from laffybot.agent_runtime.tools.errors import ToolError
+from laffybot.agent_runtime.tools.filesystem import (
     EditFileTool,
     ListDirTool,
     ReadFileTool,
     WriteFileTool,
 )
-from laffybot_agent_runtime.tools.mcp.manager import MCPServerConfig, McpServerManager
-from laffybot_agent_runtime.tools.registry import ToolRegistry
-from laffybot_agent_runtime.tools.shell import ExecTool
-from laffybot_agent_runtime.tools.skill_view import SkillViewTool
-from loguru import logger
-
-from laffybot import __version__
+from laffybot.agent_runtime.tools.mcp.manager import MCPServerConfig, McpServerManager
+from laffybot.agent_runtime.tools.registry import ToolRegistry
+from laffybot.agent_runtime.tools.shell import ExecTool
+from laffybot.agent_runtime.tools.skill_view import SkillViewTool
 from laffybot.api.dependencies import (
     build_app_setting_store,
     build_context_builder,

@@ -13,10 +13,10 @@ from typing import Any
 
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse
-from laffybot_agent_runtime.providers.errors import ProviderError
-from laffybot_agent_runtime.tools.errors import ToolError
 from loguru import logger
 
+from laffybot.agent_runtime.providers.errors import ProviderError
+from laffybot.agent_runtime.tools.errors import ToolError
 from laffybot.service.errors import (
     SessionAlreadyArchivedError,
     SessionBusyError,

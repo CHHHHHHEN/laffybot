@@ -10,8 +10,8 @@ from .tokens import ApproximateTokenCounter
 from .types import ContextConfig, RegionInfo
 
 if TYPE_CHECKING:
-    from laffybot_agent_runtime.providers.base import BaseProvider
-    from laffybot_agent_runtime.tools.registry import ToolRegistry
+    from laffybot.agent_runtime.providers.base import BaseProvider
+    from laffybot.agent_runtime.tools.registry import ToolRegistry
 
 _SUMMARY_SYSTEM_PROMPT = """You are a precise summarizer. Your task is to compress a conversation segment into a structured summary that preserves all critical information for ongoing context.
 
@@ -156,7 +156,7 @@ class LLMSummarizer:
         self._model = model
 
     async def summarize(self, messages: list[dict[str, Any]]) -> str:
-        from laffybot_agent_runtime.providers.types import ErrorLLMResponse
+        from laffybot.agent_runtime.providers.types import ErrorLLMResponse
 
         try:
             conversation_text = self._format_conversation(messages)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 
-from laffybot_agent_runtime.events import SSEEvent
+from laffybot.agent_runtime.events import SSEEvent
 
 
 class SSERingBuffer:

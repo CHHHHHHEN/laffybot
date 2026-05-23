@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import Request
-from laffybot_agent_runtime.providers.openai import OpenAIProvider
-from laffybot_agent_runtime.skills import SkillRegistry, SkillsLoader
-from laffybot_agent_runtime.tools.registry import ToolRegistry
 
+from laffybot.agent_runtime.providers.openai import OpenAIProvider
+from laffybot.agent_runtime.skills import SkillRegistry, SkillsLoader
+from laffybot.agent_runtime.tools.registry import ToolRegistry
 from laffybot.config import ApiConfig
 from laffybot.db.app_setting_store import AppSettingStore, SQLiteAppSettingStore
 from laffybot.db.manager import DatabaseManager

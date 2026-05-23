@@ -10,10 +10,10 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from laffybot_agent_runtime.events import SSEEvent, event_ping
-from laffybot_agent_runtime.heartbeat import HeartbeatManager
 from loguru import logger
 
+from laffybot.agent_runtime.events import SSEEvent, event_ping
+from laffybot.agent_runtime.heartbeat import HeartbeatManager
 from laffybot.service.ring_buffer import ring_buffer
 
 

@@ -4,8 +4,8 @@ from collections import namedtuple
 from unittest.mock import AsyncMock
 
 import pytest
-from laffybot_agent_runtime.tools.registry import ToolRegistry
 
+from laffybot.agent_runtime.tools.registry import ToolRegistry
 from laffybot.db.manager import DatabaseManager
 from laffybot.db.session_store import SQLiteStore
 from laffybot.service.context.builder import SimpleContextBuilder

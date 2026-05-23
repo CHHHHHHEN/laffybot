@@ -15,8 +15,8 @@ from .tokens import ApproximateTokenCounter, UsageBasedTokenCounter
 from .types import ContextConfig, RegionInfo
 
 if TYPE_CHECKING:
-    from laffybot_agent_runtime.providers.base import BaseProvider
-    from laffybot_agent_runtime.tools.registry import ToolRegistry
+    from laffybot.agent_runtime.providers.base import BaseProvider
+    from laffybot.agent_runtime.tools.registry import ToolRegistry
 
 
 def _normalize_assistant_tool_calls(message: dict[str, Any]) -> dict[str, Any]:

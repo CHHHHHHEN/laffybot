@@ -9,18 +9,18 @@ from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from laffybot_agent_runtime.cancellation import CancellationToken, CancelledError
-from laffybot_agent_runtime.events import (
+from loguru import logger
+
+from laffybot import __version__
+from laffybot.agent_runtime.cancellation import CancellationToken, CancelledError
+from laffybot.agent_runtime.events import (
     SSEEvent,
     event_cancelled,
     event_error,
     event_session_start,
 )
-from laffybot_agent_runtime.runner import AgentRunner, AgentRunSpec
-from laffybot_agent_runtime.tools.registry import ToolRegistry
-from loguru import logger
-
-from laffybot import __version__
+from laffybot.agent_runtime.runner import AgentRunner, AgentRunSpec
+from laffybot.agent_runtime.tools.registry import ToolRegistry
 from laffybot.db.mcp_server_store import ServerNameConflictError
 from laffybot.db.provider_store import (
     ModelNotFoundError,
@@ -46,9 +46,8 @@ from laffybot.service.provider_factory import ProviderFactory
 from laffybot.service.state_machine import SessionStateMachine
 
 if TYPE_CHECKING:
-    from laffybot_agent_runtime.skills import SkillRegistry, SkillsLoader
-    from laffybot_agent_runtime.tools.mcp.manager import McpServerManager
-
+    from laffybot.agent_runtime.skills import SkillRegistry, SkillsLoader
+    from laffybot.agent_runtime.tools.mcp.manager import McpServerManager
     from laffybot.db.app_setting_store import AppSettingStore
     from laffybot.db.mcp_server_store import McpServerStore
     from laffybot.db.memory_store import MemoryStore
@@ -878,16 +877,16 @@ class DefaultSessionManager(SessionManager):
         if self.mcp_server_store is None:
             return {"success": False, "message": "MCP not available"}
         row = await self.mcp_server_store.get_server(server_id)
-        from laffybot_agent_runtime.tools.mcp.client import (
+        from laffybot.agent_runtime.tools.mcp.client import (
             McpClient,
             McpError,
             McpProtocolError,
         )
-        from laffybot_agent_runtime.tools.mcp.manager import (
+        from laffybot.agent_runtime.tools.mcp.manager import (
             MCPServerConfig,
             create_transport,
         )
-        from laffybot_agent_runtime.tools.mcp.transports import TransportError
+        from laffybot.agent_runtime.tools.mcp.transports import TransportError
 
         config = MCPServerConfig(
             name=row.name,
@@ -960,7 +959,7 @@ class DefaultSessionManager(SessionManager):
     async def _hot_swap_mcp(self) -> None:
         if self.mcp_server_store is None or self.mcp_manager is None:
             return
-        from laffybot_agent_runtime.tools.mcp.manager import MCPServerConfig
+        from laffybot.agent_runtime.tools.mcp.manager import MCPServerConfig
 
         raw_configs = await self.mcp_server_store.get_enabled_server_configs()
         configs = [MCPServerConfig(**c) for c in raw_configs]

@@ -7,11 +7,10 @@ specific Provider SDKs.
 
 from __future__ import annotations
 
-from laffybot_agent_runtime.providers.base import BaseProvider
-from laffybot_agent_runtime.providers.config import (
+from laffybot.agent_runtime.providers.base import BaseProvider
+from laffybot.agent_runtime.providers.config import (
     ProviderConfig as AgentProviderConfig,
 )
-
 from laffybot.db.provider_store import ProviderConfig as DbProviderConfig
 from laffybot.service.protocols import ProviderFactory as _ProviderFactoryProtocol
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from laffybot_agent_runtime.providers.base import BaseProvider
+    from laffybot.agent_runtime.providers.base import BaseProvider
 
 TITLE_PROMPT = """Generate a concise, descriptive title (max 50 characters) for this conversation. Respond with ONLY the title, no quotes or punctuation.
 
@@ -40,7 +40,7 @@ class TitleGenerator:
         prompt = TITLE_PROMPT.format(conversation=conversation_text)
 
         try:
-            from laffybot_agent_runtime.providers.types import ErrorLLMResponse
+            from laffybot.agent_runtime.providers.types import ErrorLLMResponse
 
             response = await self.provider.chat_completion(
                 messages=[{"role": "user", "content": prompt}],

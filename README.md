@@ -51,24 +51,7 @@ laffybot/
 │   ├── crypto.py                # API 密钥加密
 │   └── config.py                # ApiConfig (Pydantic BaseSettings)
 │
-├── packages/                    # 独立发布子包
-│   ├── laffybot-agent-runtime/  # Agent 执行引擎 (laffybot_agent_runtime)
-│   │   ├── pyproject.toml       # 独立版本号 & 依赖
-│   │   └── src/
-│   │       └── laffybot_agent_runtime/
-│   │           ├── runner.py            # AgentRunner: LLM 循环 + 流式事件
-│   │           ├── events.py            # SSE 事件类型 & 工厂函数
-│   │           ├── cancellation.py      # CancellationToken 取消机制
-│   │           ├── heartbeat.py         # HeartbeatManager 心跳保活
-│   │           ├── title_generator.py   # 自动标题生成
-│   │           ├── config.py            # ContextConfig
-│   │           ├── tools/               # 工具系统
-│   │           ├── skills/              # Skill 系统
-│   │           ├── context/             # 上下文构建层
-│   │           ├── providers/           # LLM 提供商抽象层
-│   │           └── tests/
-│   │
-├── tests/                       # Python 测试（laffybot 主包）
+├── tests/                       # Python 测试（laffybot 主包 + agent_runtime）
 │   ├── __init__.py
 │   └── session/
 │       ├── test_session_manager.py

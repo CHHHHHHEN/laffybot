@@ -15,8 +15,7 @@ from laffybot.service.protocols import MemoryManager as MemoryManagerProtocol
 from laffybot.utils.token_counter import ApproximateTokenCounter
 
 if TYPE_CHECKING:
-    from laffybot_agent_runtime.providers.base import BaseProvider
-
+    from laffybot.agent_runtime.providers.base import BaseProvider
     from laffybot.memory.consolidator import MemoryConsolidator
 
 

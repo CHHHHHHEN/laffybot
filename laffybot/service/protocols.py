@@ -10,9 +10,8 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any, Protocol
 
-from laffybot_agent_runtime.events import SSEEvent
-from laffybot_agent_runtime.providers.base import BaseProvider
-
+from laffybot.agent_runtime.events import SSEEvent
+from laffybot.agent_runtime.providers.base import BaseProvider
 from laffybot.db.provider_store import ProviderConfig
 from laffybot.service.models import SessionInfo, SessionStatus
 

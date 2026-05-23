@@ -8,11 +8,8 @@
 - `uv run mypy laffybot/` — mypy 类型检查
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy laffybot/` — 三者一起跑
 
-## Python 代码质量 (laffybot-agent-runtime)
-- `uv run ruff check packages/laffybot-agent-runtime/` — ruff 语法检查
-- `uv run ruff format --check packages/laffybot-agent-runtime/` — ruff 格式检查
-- `uv run mypy packages/laffybot-agent-runtime/src/laffybot_agent_runtime/` — mypy 类型检查
-- `uv run ruff check packages/laffybot-agent-runtime/ && uv run ruff format --check packages/laffybot-agent-runtime/ && uv run mypy packages/laffybot-agent-runtime/src/laffybot_agent_runtime/` — 三者一起跑
+## Python 代码质量 (agent_runtime)
+（已合并到 laffybot/ 包中；涵盖在 laffybot/ 的检查范围内）
 
 ## UI 代码质量 (ui/)
 - `pnpm run typecheck` — TypeScript 类型检查（对标 mypy）

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 
-from laffybot_agent_runtime.providers.base import BaseProvider
+from laffybot.agent_runtime.providers.base import BaseProvider
 
 from .types import ContextConfig, RegionInfo
 

@@ -126,7 +126,7 @@
                                      ▼
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
 │                       Agent Runtime (无状态执行引擎)                                   │
-│  packages/laffybot-agent-runtime/src/laffybot_agent_runtime/                         │
+│  laffybot/agent_runtime/                                                             │
 │  职责: 纯 AI 对话循环, 只处理模型调用、工具调用和事件流                                 │
 │  不负责: 会话状态、存储持久化、业务编排、API 协议                                        │
 │  公开接口:                                                                             │

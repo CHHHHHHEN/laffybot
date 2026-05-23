@@ -28,7 +28,6 @@ import shutil
 import subprocess
 import sys
 
-
 TARGET_TRIPLES = {
     ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
     ("Linux", "aarch64"): "aarch64-unknown-linux-gnu",
@@ -53,9 +52,7 @@ def detect_target_triple() -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Build Laffybot backend with Nuitka"
-    )
+    parser = argparse.ArgumentParser(description="Build Laffybot backend with Nuitka")
     parser.add_argument(
         "--target-dir",
         default=None,
@@ -64,10 +61,7 @@ def main() -> None:
     parser.add_argument(
         "--target-triple",
         default=None,
-        help=(
-            "Target triple for sidecar naming. "
-            "Auto-detected from host if omitted."
-        ),
+        help=("Target triple for sidecar naming. Auto-detected from host if omitted."),
     )
     parser.add_argument(
         "--include-package",
@@ -96,11 +90,9 @@ def main() -> None:
     # --follow-imports handles regular transitive deps automatically.
     # --include-package is only needed for packages that Nuitka's
     # static analysis might miss:
-    #   - The two application packages (workspace layout)
     #   - pydantic (heavy metaclass/dynamic model usage)
     force_packages = [
         "laffybot",
-        "laffybot_agent_runtime",
         "pydantic",
     ]
     force_packages.extend(args.extra_packages)
@@ -108,7 +100,8 @@ def main() -> None:
     # ── Build the Nuitka command ─────────────────────────────
     cmd = [
         sys.executable or "python3",
-        "-m", "nuitka",
+        "-m",
+        "nuitka",
         f"--output-dir={target_dir}",
         "--output-filename=laffybot-backend",
         # standalone (onedir) mode — produces a directory
@@ -131,7 +124,7 @@ def main() -> None:
     cmd.append(entry_point)
 
     # ── Print build info ─────────────────────────────────────
-    print(f"🔨 Laffybot Backend — Nuitka Build")
+    print("🔨 Laffybot Backend — Nuitka Build")
     print(f"   Target triple:  {target_triple}")
     print(f"   Output dir:     {output_dir}")
     print(f"   Entry point:    {entry_point}")
@@ -169,7 +162,11 @@ def main() -> None:
     target_dist = os.path.join(target_dir, dist_dir_name)
     target_build = os.path.join(target_dir, build_dir_name)
 
-    final_exe_name = "laffybot-backend.exe" if target_triple.startswith("x86_64-pc-windows") else "laffybot-backend"
+    final_exe_name = (
+        "laffybot-backend.exe"
+        if target_triple.startswith("x86_64-pc-windows")
+        else "laffybot-backend"
+    )
     final_exe_path = os.path.join(target_dist, final_exe_name)
 
     if os.path.exists(nuitka_dist):
@@ -189,7 +186,7 @@ def main() -> None:
             print(f"   Sidecar name:  {output_name}")
             print(f"   Tauri sidecar path: ui/src-tauri/binaries/{output_name}/")
         else:
-            print(f"\n⚠️  Output directory renamed but executable not found:")
+            print("\n⚠️  Output directory renamed but executable not found:")
             print(f"   Expected: {final_exe_path}")
             print(f"   Check {target_dist} for the actual output.")
             sys.exit(1)
@@ -199,7 +196,7 @@ def main() -> None:
             size_mb = os.path.getsize(final_exe_path) / (1024 * 1024)
             print(f"\n✅ Build complete: {final_exe_path} ({size_mb:.1f} MB)")
         else:
-            print(f"\n⚠️  Build finished but executable not found at expected path:")
+            print("\n⚠️  Build finished but executable not found at expected path:")
             print(f"   {final_exe_path}")
             print(f"   Check {target_dir} for the actual output.")
             sys.exit(1)
