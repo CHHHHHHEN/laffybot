@@ -51,10 +51,6 @@ class DatabaseManager:
             else await db.execute(sql)
         )
 
-    async def executescript(self, sql: str) -> None:
-        db = await self.connect()
-        await db.executescript(sql)
-
     async def commit(self) -> None:
         if self._db is not None:
             await self._db.commit()

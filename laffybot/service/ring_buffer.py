@@ -1,10 +1,4 @@
-"""Per-session ring buffer for SSE event replay.
-
-ARCHITECTURE.md 第 285 行:
-  Server 维护按 session 隔离的内存 ring buffer (容量 N=100 event),
-  落盘同时入 buffer。客户端重连时通过 Last-Event-ID 请求缺失事件;
-  Server 优先查 ring buffer, 未命中则回查 Store。
-"""
+"""Per-session ring buffer for SSE event replay."""
 
 from __future__ import annotations
 

@@ -725,13 +725,9 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "respx" },
     { name = "ruff" },
     { name = "types-psutil" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "respx" },
 ]
 
 [package.metadata]
@@ -754,14 +750,12 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.23.1" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "types-psutil", marker = "extra == 'dev'" },
     { name = "uvicorn" },
 ]
 provides-extras = ["dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "respx", specifier = ">=0.23.1" }]
 
 [[package]]
 name = "librt"

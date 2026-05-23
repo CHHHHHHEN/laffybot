@@ -21,6 +21,3 @@ class SessionStateMachine:
     async def force_to_idle(self, session_id: str) -> SessionStatus:
         await self._lock_port.force_unlock(session_id)
         return "idle"
-
-    def cancel(self, session_id: str, reason: str | None = None) -> None:
-        pass

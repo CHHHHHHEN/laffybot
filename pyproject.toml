@@ -32,6 +32,7 @@ include = ["laffybot*"]
 [project.optional-dependencies]
 
 dev = [
+    "respx>=0.23.1",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -41,11 +42,6 @@ dev = [
     "psutil",
     "types-psutil",
     "nuitka",
-]
-
-[dependency-groups]
-dev = [
-    "respx>=0.23.1",
 ]
 
 [[tool.uv.index]]
