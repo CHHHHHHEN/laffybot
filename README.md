@@ -68,8 +68,6 @@ laffybot/
 │   │           ├── providers/           # LLM 提供商抽象层
 │   │           └── tests/
 │   │
-│   └── rag-mcp-server/          # RAG MCP 服务 (独立进程，通过 MCP 协议使用)
-│
 ├── tests/                       # Python 测试（laffybot 主包）
 │   ├── __init__.py
 │   └── session/
