@@ -110,7 +110,7 @@ def main() -> None:
         sys.executable or "python3",
         "-m", "nuitka",
         f"--output-dir={target_dir}",
-        f"--output-filename={output_name}",
+        "--output-filename=laffybot-backend",
         # standalone (onedir) mode — produces a directory
         "--mode=standalone",
         # follow all imports
