@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import shutil
 import subprocess
 import sys
 
@@ -92,28 +93,15 @@ def main() -> None:
     project_root = script_dir
 
     # ── Packages that must be force-included ──────────────────
-    # These are imported dynamically or via lazy imports and
-    # Nuitka's auto-follow might miss them.
+    # --follow-imports handles regular transitive deps automatically.
+    # --include-package is only needed for packages that Nuitka's
+    # static analysis might miss:
+    #   - The two application packages (workspace layout)
+    #   - pydantic (heavy metaclass/dynamic model usage)
     force_packages = [
         "laffybot",
         "laffybot_agent_runtime",
         "pydantic",
-        "pydantic_settings",
-        "jinja2",
-        "jinja2.ext",
-        "openai",
-        "httpx",
-        "httpx_sse",
-        "aiosqlite",
-        "cryptography",
-        "loguru",
-        "uvicorn",
-        "fastapi",
-        "json_repair",
-        "anyio",
-        "sniffio",
-        "h11",
-        "httpcore",
     ]
     force_packages.extend(args.extra_packages)
 
@@ -129,7 +117,6 @@ def main() -> None:
         "--follow-imports",
         # enable plugins for compatibility
         "--enable-plugin=pylint-warnings",
-        "--enable-plugin=multiprocessing",
         # disable console window on Windows
         "--disable-console",
         # Auto download Walker
@@ -171,20 +158,51 @@ def main() -> None:
         print(f"\n❌ Nuitka build failed with exit code {result.returncode}")
         sys.exit(result.returncode)
 
-    # ── Verify output ────────────────────────────────────────
-    exe_name = "laffybot-backend.exe" if target_triple.startswith("x86_64-pc-windows") else "laffybot-backend"
-    exe_path = os.path.join(output_dir, exe_name)
+    # ── Verify and restructure output ──────────────────────────
+    # Nuitka with --mode=standalone creates a {entry_module}.dist/ directory
+    # named after the entry point module (e.g. __main__.dist).
+    # We need to rename it to the expected sidecar directory format.
+    dist_dir_name = f"{output_name}"
+    build_dir_name = f"{output_name}.build"
+    nuitka_dist = os.path.join(target_dir, "__main__.dist")
+    nuitka_build = os.path.join(target_dir, "__main__.build")
+    target_dist = os.path.join(target_dir, dist_dir_name)
+    target_build = os.path.join(target_dir, build_dir_name)
 
-    if os.path.exists(exe_path):
-        size_mb = os.path.getsize(exe_path) / (1024 * 1024)
-        print(f"\n✅ Build complete: {exe_path} ({size_mb:.1f} MB)")
-        print(f"   Sidecar name:  {output_name}")
-        print(f"   Copy to:       ui/src-tauri/binaries/{output_name}/")
+    final_exe_name = "laffybot-backend.exe" if target_triple.startswith("x86_64-pc-windows") else "laffybot-backend"
+    final_exe_path = os.path.join(target_dist, final_exe_name)
+
+    if os.path.exists(nuitka_dist):
+        # Remove any previous output
+        if os.path.exists(target_dist):
+            shutil.rmtree(target_dist)
+        os.rename(nuitka_dist, target_dist)
+        # Also rename the build dir for cleanliness
+        if os.path.exists(nuitka_build):
+            if os.path.exists(target_build):
+                shutil.rmtree(target_build)
+            os.rename(nuitka_build, target_build)
+
+        if os.path.exists(final_exe_path):
+            size_mb = os.path.getsize(final_exe_path) / (1024 * 1024)
+            print(f"\n✅ Build complete: {final_exe_path} ({size_mb:.1f} MB)")
+            print(f"   Sidecar name:  {output_name}")
+            print(f"   Tauri sidecar path: ui/src-tauri/binaries/{output_name}/")
+        else:
+            print(f"\n⚠️  Output directory renamed but executable not found:")
+            print(f"   Expected: {final_exe_path}")
+            print(f"   Check {target_dist} for the actual output.")
+            sys.exit(1)
     else:
-        print(f"\n⚠️  Build finished but executable not found at expected path:")
-        print(f"   {exe_path}")
-        print(f"   Check {output_dir} for the actual output.")
-        sys.exit(1)
+        # Fallback: check if Nuitka already created the expected path
+        if os.path.exists(final_exe_path):
+            size_mb = os.path.getsize(final_exe_path) / (1024 * 1024)
+            print(f"\n✅ Build complete: {final_exe_path} ({size_mb:.1f} MB)")
+        else:
+            print(f"\n⚠️  Build finished but executable not found at expected path:")
+            print(f"   {final_exe_path}")
+            print(f"   Check {target_dir} for the actual output.")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
