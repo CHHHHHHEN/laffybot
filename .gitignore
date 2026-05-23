@@ -26,6 +26,13 @@ config.json
 # Tauri (Rust build artifacts)
 ui/src-tauri/target/
 
+# Tauri sidecar binaries (compiled Python backend)
+ui/src-tauri/binaries/*
+!ui/src-tauri/binaries/.gitkeep
+
+# Nuitka build output
+laffybot-backend-*/
+
 
 # ide files
 .github
