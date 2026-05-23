@@ -110,12 +110,10 @@ def main() -> None:
         "uvicorn",
         "fastapi",
         "json_repair",
-        "multipart",       # python-multipart
         "anyio",
         "sniffio",
         "h11",
         "httpcore",
-        "websockets",
     ]
     force_packages.extend(args.extra_packages)
 
@@ -134,6 +132,8 @@ def main() -> None:
         "--enable-plugin=multiprocessing",
         # disable console window on Windows
         "--disable-console",
+        # Auto download Walker
+        "--assume-yes-for-downloads",
     ]
 
     for pkg in force_packages:
