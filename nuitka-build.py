@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Nuitka compilation script for Laffybot backend.
 
-Builds the Python backend into a standalone executable directory
-suitable for bundling as a Tauri sidecar.
+Builds the Python backend into a standalone executable directory.
 
 Usage:
     python nuitka-build.py                           # auto-detect target
@@ -14,9 +13,6 @@ Output:
     ├── laffybot-backend(.exe)       # main executable
     ├── laffybot-backend.dist/       # compiled Python modules
     └── ...                          # shared libraries (.so/.dll/.dylib)
-
-The output directory follows Tauri sidecar naming convention:
-  {name}-{target_triple}/
 """
 
 from __future__ import annotations
@@ -61,7 +57,7 @@ def main() -> None:
     parser.add_argument(
         "--target-triple",
         default=None,
-        help=("Target triple for sidecar naming. Auto-detected from host if omitted."),
+        help=("Target triple for output naming. Auto-detected from host if omitted."),
     )
     parser.add_argument(
         "--include-package",
@@ -154,7 +150,7 @@ def main() -> None:
     # ── Verify and restructure output ──────────────────────────
     # Nuitka with --mode=standalone creates a {entry_module}.dist/ directory
     # named after the entry point module (e.g. __main__.dist).
-    # We need to rename it to the expected sidecar directory format.
+    # We need to rename it to the expected directory format.
     dist_dir_name = f"{output_name}"
     build_dir_name = f"{output_name}.build"
     nuitka_dist = os.path.join(target_dir, "__main__.dist")
@@ -183,8 +179,7 @@ def main() -> None:
         if os.path.exists(final_exe_path):
             size_mb = os.path.getsize(final_exe_path) / (1024 * 1024)
             print(f"\n✅ Build complete: {final_exe_path} ({size_mb:.1f} MB)")
-            print(f"   Sidecar name:  {output_name}")
-            print(f"   Tauri sidecar path: ui/src-tauri/binaries/{output_name}/")
+            print(f"   Binary name:   {output_name}")
         else:
             print("\n⚠️  Output directory renamed but executable not found:")
             print(f"   Expected: {final_exe_path}")

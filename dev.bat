@@ -13,17 +13,11 @@ set BACKEND_PID=
 set FRONTEND_PID=
 set CLEANUP_DONE=false
 
-set TAURI_MODE=false
 set BACKEND_ONLY=false
 set FRONTEND_ONLY=false
 
 :parse_args
 if "%~1"=="" goto :check_args
-if "%~1"=="--tauri" (
-    set TAURI_MODE=true
-    shift
-    goto :parse_args
-)
 if "%~1"=="--backend" (
     set BACKEND_ONLY=true
     shift
@@ -43,14 +37,12 @@ goto :usage
 echo Usage: %~nx0 [OPTIONS]
 echo.
 echo Options:
-echo   --tauri      Start Tauri desktop instead of web frontend
 echo   --backend    Start backend only
 echo   --frontend   Start web frontend only
 echo   --help       Show this help
 echo.
 echo Examples:
 echo   %~nx0              Start backend + web frontend
-echo   %~nx0 --tauri      Start backend + Tauri desktop
 echo   %~nx0 --backend    Start backend only
 exit /b 0
 
@@ -114,15 +106,9 @@ for /f "tokens=2" %%i in ('tasklist /fi "imagename eq python.exe" /fo list ^| fi
     set BACKEND_PID=%%i
 )
 
-if "%TAURI_MODE%"=="true" (
-    echo [Tauri] Starting Tauri dev mode...
-    cd ui
-    start /b pnpm run tauri dev
-) else (
-    echo [Frontend] Starting Vite dev server on port %FRONTEND_PORT%...
-    cd ui
-    start /b pnpm run dev
-)
+echo [Frontend] Starting Vite dev server on port %FRONTEND_PORT%...
+cd ui
+start /b pnpm run dev
 
 REM Get frontend PID
 for /f "tokens=2" %%i in ('tasklist /fi "imagename eq node.exe" /fo list ^| find "PID:"') do (

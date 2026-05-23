@@ -63,16 +63,7 @@ laffybot/
 │   ├── vite.config.ts           # Vite 构建配置
 │   ├── tsconfig*.json           # TypeScript 配置
 │   ├── eslint.config.js         # ESLint 配置
-│   ├── src-tauri/               # Tauri v2 桌面端骨架
-│   │   ├── Cargo.toml           # Rust 依赖
-│   │   ├── tauri.conf.json      # Tauri 配置（窗口、安全、打包）
-│   │   ├── build.rs             # Tauri 构建脚本
-│   │   ├── src/
-│   │   │   ├── main.rs          # Rust 入口
-│   │   │   └── lib.rs           # Tauri 应用定义
-│   │   ├── capabilities/        # 权限声明
-│   │   └── icons/               # 多平台图标
-│   └── src/
+ │   └── src/
 │       ├── main.tsx             # React 入口
 │       ├── App.tsx              # 路由定义 (react-router-dom)
 │       ├── index.css            # 全局样式 + Tailwind 主题变量
@@ -141,8 +132,7 @@ laffybot/
         ├── ui-design-spec.md                   # 视觉设计规范
         ├── ui-design.md                        # 交互 & 组件设计
         ├── ui-tech-selection.md                # 技术选型依据
-        ├── desktop-design.md                   # 桌面端架构设计
-        └── tauri-impl-plan.md                  # Tauri 实现步骤
+        └── ...
 ```
 
 ---
@@ -381,8 +371,7 @@ AppShell
 1. **无 openapi-typescript**: 类型定义手写（后端 API 稳定，维护成本低）
 2. **TanStack Query + Zustand 并存**: TanStack Query 处理服务端数据缓存和 mutations（会话/提供商 CRUD），Zustand 保留给客户端流式状态（chat-store）和 UI 状态（ui-store, toast-store）
 3. **无 shadcn/ui**: 组件均手写（Button/Input/Modal/Collapsible）
-4. **Tauri v2**: 桌面端已实现（阶段一：独立后端进程模式）。详见 `docs/ui/desktop-design.md`、`docs/ui/tauri-impl-plan.md`
-5. **主题切换已接入**: CSS 变量定义的 `.dark` class 由 AppShell 中的 useTheme hook 自动切换
+4. **主题切换已接入**: CSS 变量定义的 `.dark` class 由 AppShell 中的 useTheme hook 自动切换
 
 ---
 

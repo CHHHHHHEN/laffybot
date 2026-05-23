@@ -17,14 +17,12 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --tauri      Start Tauri desktop instead of web frontend"
     echo "  --backend    Start backend only"
     echo "  --frontend   Start web frontend only"
     echo "  --help       Show this help"
     echo ""
     echo "Examples:"
     echo "  $0              Start backend + web frontend"
-    echo "  $0 --tauri      Start backend + Tauri desktop"
     echo "  $0 --backend    Start backend only"
     exit 0
 }
@@ -75,16 +73,11 @@ cleanup() {
     echo "[Shutdown] Done."
 }
 
-TAURI_MODE=false
 BACKEND_ONLY=false
 FRONTEND_ONLY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --tauri)
-            TAURI_MODE=true
-            shift
-            ;;
         --backend)
             BACKEND_ONLY=true
             shift
@@ -124,19 +117,15 @@ else
     BACKEND_PID=$!
     
     sleep 2
-    
+
     if ! kill -0 $BACKEND_PID 2>/dev/null; then
         echo "Error: Backend failed to start"
         exit 1
     fi
-    
-    if $TAURI_MODE; then
-        echo "[Tauri] Starting Tauri dev mode..."
-        cd ui && pnpm run tauri dev &
-    else
-        echo "[Frontend] Starting Vite dev server on port $FRONTEND_PORT..."
-        cd ui && pnpm run dev &
-    fi
+
+    echo "[Frontend] Starting Vite dev server on port $FRONTEND_PORT..."
+    cd ui && pnpm run dev &
+
     FRONTEND_PID=$!
     
     wait $FRONTEND_PID 2>/dev/null || true

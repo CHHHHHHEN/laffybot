@@ -12,9 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Tauri sidecar binaries
-src-tauri/binaries/*
-!src-tauri/binaries/.gitkeep
 .vscode/*
 !.vscode/extensions.json
 .idea

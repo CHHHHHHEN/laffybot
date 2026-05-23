@@ -4,7 +4,6 @@ Laffybot development launcher script.
 
 Usage:
     uv run dev.py              # Start backend + web frontend
-    uv run dev.py --tauri      # Start backend + Tauri desktop
     uv run dev.py --backend    # Start backend only
     uv run dev.py --frontend   # Start web frontend only (assumes backend running)
     uv run dev.py --help       # Show help
@@ -85,15 +84,6 @@ def start_frontend_web(project_root: Path) -> psutil.Popen:
     )
 
 
-def start_frontend_tauri(project_root: Path) -> psutil.Popen:
-    ui_dir = project_root / "ui"
-    print("[Tauri] Starting Tauri dev mode...")
-    return run_command(
-        ["pnpm", "run", "tauri", "dev"],
-        cwd=ui_dir,
-    )
-
-
 def kill_process_tree(proc: psutil.Popen) -> None:
     try:
         parent = psutil.Process(proc.pid)
@@ -141,15 +131,9 @@ def main() -> None:
         epilog="""
 Examples:
   uv run dev.py              Start backend + web frontend
-  uv run dev.py --tauri      Start backend + Tauri desktop
   uv run dev.py --backend    Start backend only
   uv run dev.py --frontend   Start web frontend only
 """,
-    )
-    parser.add_argument(
-        "--tauri",
-        action="store_true",
-        help="Start Tauri desktop instead of web frontend",
     )
     parser.add_argument(
         "--backend",
@@ -192,10 +176,7 @@ Examples:
                 cleanup()
                 sys.exit(1)
 
-            if args.tauri:
-                frontend_proc = start_frontend_tauri(project_root)
-            else:
-                frontend_proc = start_frontend_web(project_root)
+            frontend_proc = start_frontend_web(project_root)
             _processes.append(frontend_proc)
 
         for proc in _processes:
